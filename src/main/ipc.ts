@@ -75,10 +75,18 @@ export function registerIpcHandlers() {
 
   ipcMain.handle('add-feed', async (_, feed) => {
     const stmt = db.prepare(`
-      INSERT INTO rss_feeds (name, url, parsing_script, cron_schedule, group_id)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO rss_feeds (name, url, parsing_script, cron_schedule, group_id, update_interval, proxy_override)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
-    const result = stmt.run(feed.name, feed.url, feed.parsing_script, feed.cron_schedule, feed.group_id);
+    const result = stmt.run(
+      feed.name, 
+      feed.url, 
+      feed.parsing_script, 
+      feed.cron_schedule, 
+      feed.group_id, 
+      feed.update_interval || 24,
+      feed.proxy_override || null
+    );
     const lastId = Number(result.lastInsertRowid);
     // 在后台运行抓取，不阻塞响应
     fetchRSS(lastId).catch(err => console.error('Initial fetch failed:', err));
@@ -92,10 +100,21 @@ export function registerIpcHandlers() {
         url = ?, 
         parsing_script = ?, 
         cron_schedule = ?, 
-        group_id = ?
+        group_id = ?,
+        update_interval = ?,
+        proxy_override = ?
       WHERE id = ?
     `);
-    stmt.run(feed.name, feed.url, feed.parsing_script, feed.cron_schedule, feed.group_id, feed.id);
+    stmt.run(
+      feed.name, 
+      feed.url, 
+      feed.parsing_script, 
+      feed.cron_schedule, 
+      feed.group_id, 
+      feed.update_interval || 24,
+      feed.proxy_override || null,
+      feed.id
+    );
     return { success: true };
   });
 
@@ -124,6 +143,22 @@ export function registerIpcHandlers() {
     params.push(limit, offset);
 
     return db.prepare(query).all(...params);
+  });
+
+  ipcMain.handle('get-total-article-count', (_, { feedId, groupId } = {}) => {
+    let query = 'SELECT COUNT(*) as count FROM articles';
+    const params: any[] = [];
+
+    if (feedId) {
+      query += ' WHERE rss_feed_id = ?';
+      params.push(feedId);
+    } else if (groupId) {
+      query += ' WHERE rss_feed_id IN (SELECT id FROM rss_feeds WHERE group_id = ?)';
+      params.push(groupId);
+    }
+
+    const result = db.prepare(query).get(...params) as any;
+    return result.count;
   });
 
   ipcMain.handle('toggle-favorite', (_, { id, isFavorited }) => {
@@ -169,6 +204,14 @@ export function registerIpcHandlers() {
   ipcMain.handle('add-group', (_, name) => {
     const result = db.prepare('INSERT INTO groups (name) VALUES (?)').run(name);
     return { success: true, id: Number(result.lastInsertRowid) };
+  });
+
+  ipcMain.handle('delete-group', (_, id) => {
+    db.transaction(() => {
+      db.prepare('UPDATE rss_feeds SET group_id = NULL WHERE group_id = ?').run(id);
+      db.prepare('DELETE FROM groups WHERE id = ?').run(id);
+    })();
+    return { success: true };
   });
 
   // Chat History

@@ -2,6 +2,7 @@
 import { ref, toRaw, onMounted } from 'vue';
 import { useMainStore } from '../store';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import IntervalSlider from '../components/IntervalSlider.vue';
 import { 
   Plus, 
   Settings, 
@@ -32,12 +33,24 @@ const debugResult = ref<any>(null);
 
 const defaultScript = `function parse(rssText) {\n  // 使用 DOMParser 解析 XML\n  const parser = new DOMParser();\n  const xmlDoc = parser.parseFromString(rssText, "text/xml");\n  const items = xmlDoc.querySelectorAll("item, entry");\n  \n  return Array.from(items).map(item => {\n    // 兼容 RSS 和 Atom 格式\n    const title = item.querySelector("title")?.textContent || "";\n    const authors = Array.from(item.querySelectorAll("author name, author, dc\\\\:creator")).map(a => a.textContent);\n    const abstract = item.querySelector("description, summary, content")?.textContent || "";\n    const url = item.querySelector("link")?.getAttribute("href") || item.querySelector("link")?.textContent || "";\n    const date = item.querySelector("pubDate, updated, published")?.textContent || "";\n    \n    return {\n      title: title.trim(),\n      authors: authors.length > 0 ? authors : ["Unknown"],\n      abstract: abstract.trim(),\n      url: url.trim(),\n      publication_date: date.trim()\n    };\n  });\n}`;
 
+const intervalOptions = [
+  { label: '12小时', value: 12, cron: '0 */12 * * *' },
+  { label: '24小时', value: 24, cron: '0 0 * * *' },
+  { label: '2天', value: 48, cron: '0 0 */2 * *' },
+  { label: '3天', value: 72, cron: '0 0 */3 * *' },
+  { label: '7天', value: 168, cron: '0 0 */7 * *' },
+  { label: '15天', value: 360, cron: '0 0 */15 * *' },
+  { label: '30天', value: 720, cron: '0 0 1 * *' }
+];
+
 const newFeed = ref({
   id: undefined as number | undefined,
   name: '',
   url: '',
   parsing_script: defaultScript,
-  cron_schedule: '0 */6 * * *',
+  cron_schedule: '0 0 * * *',
+  update_interval: 24,
+  proxy_override: '',
   group_id: null
 });
 
@@ -53,7 +66,9 @@ const openAddModal = () => {
     name: '',
     url: '',
     parsing_script: defaultScript,
-    cron_schedule: '0 */6 * * *',
+    cron_schedule: '0 0 * * *',
+    update_interval: 24,
+    proxy_override: '',
     group_id: null
   };
   showAddModal.value = true;
@@ -69,9 +84,22 @@ const openEditModal = (feed: any) => {
     url: feed.url,
     parsing_script: feed.parsing_script,
     cron_schedule: feed.cron_schedule,
+    update_interval: feed.update_interval || 24,
+    proxy_override: feed.proxy_override || '',
     group_id: feed.group_id
   };
   showAddModal.value = true;
+};
+
+const handleIntervalChange = (val: number) => {
+  const option = intervalOptions.find(o => o.value === val);
+  if (option) {
+    newFeed.value.cron_schedule = option.cron;
+  }
+};
+
+const formatIntervalLabel = (val: number) => {
+  return intervalOptions.find(o => o.value === val)?.label || val + 'h';
 };
 
 const debugScript = async () => {
@@ -301,7 +329,7 @@ const getHostname = (url: string) => {
             <div class="bg-[var(--bg-main)]/50 p-3 rounded-xl border border-[var(--border)]">
               <p class="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest mb-0.5">更新间隔</p>
               <p class="text-xs font-bold text-[var(--text-main)] flex items-center gap-1.5">
-                <Clock :size="12" class="text-[var(--accent)]" /> {{ feed.cron_schedule === '0 */6 * * *' ? '6h' : 'Custom' }}
+                <Clock :size="12" class="text-[var(--accent)]" /> {{ formatIntervalLabel(feed.update_interval || 24) }}
               </p>
             </div>
           </div>
@@ -347,9 +375,20 @@ const getHostname = (url: string) => {
             </el-select>
           </div>
           <div class="space-y-2">
-            <label class="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest ml-1">更新频率 (Cron 表达式)</label>
-            <el-input v-model="newFeed.cron_schedule" placeholder="0 */6 * * *" />
+            <label class="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest ml-1">自定义代理 (可选)</label>
+            <el-input v-model="newFeed.proxy_override" placeholder="http://127.0.0.1:7890" />
           </div>
+        </div>
+
+        <div class="space-y-4 bg-[var(--bg-main)]/30 p-4 rounded-xl border border-[var(--border)]">
+          <div class="flex justify-between items-center">
+            <label class="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest ml-1">更新频率</label>
+            <span class="text-[9px] font-mono text-[var(--text-muted)]">CRON: {{ newFeed.cron_schedule }}</span>
+          </div>
+          <IntervalSlider 
+            v-model="newFeed.update_interval" 
+            @change="handleIntervalChange"
+          />
         </div>
 
         <div class="space-y-3">

@@ -109,6 +109,12 @@ export function initSqlite() {
     db.exec("ALTER TABLE settings ADD COLUMN trans_llm_api_key TEXT");
     db.exec("ALTER TABLE settings ADD COLUMN trans_llm_model_name TEXT");
   }
+
+  const tableInfoFeeds = db.prepare("PRAGMA table_info(rss_feeds)").all() as any[];
+  const hasUpdateInterval = tableInfoFeeds.some(c => c.name === 'update_interval');
+  if (!hasUpdateInterval) {
+    db.exec("ALTER TABLE rss_feeds ADD COLUMN update_interval INTEGER DEFAULT 24");
+  }
 }
 
 export async function initLanceDB() {

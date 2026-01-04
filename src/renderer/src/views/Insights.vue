@@ -316,11 +316,19 @@ onMounted(async () => {
   background-color: var(--accent) !important;
   color: white !important;
   box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3) !important;
+  border: 1px solid var(--accent) !important;
 }
 
 :deep(.el-calendar-table td.is-today .el-calendar-day) {
-  color: var(--accent) !important;
-  border: 1px solid var(--accent) !important;
+  color: #f59e0b !important; /* 使用琥珀色区分今日 */
+  border: 1px solid #f59e0b !important;
+  background-color: rgba(245, 158, 11, 0.05) !important;
+}
+
+:deep(.el-calendar-table td.is-today.is-selected .el-calendar-day) {
+  background-color: var(--accent) !important;
+  color: white !important;
+  border: 1px solid #f59e0b !important; /* 选中今日时保留今日边框 */
 }
 
 :deep(.el-calendar__header) {

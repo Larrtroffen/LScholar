@@ -26,6 +26,7 @@ const store = useMainStore();
 const searchQuery = ref('');
 const selectedFeedId = ref<number | null>(null);
 const selectedGroupId = ref<number | null>(null);
+const totalArticles = ref(0);
 const loading = ref(false);
 const translating = ref(false);
 const isDetailsVisible = ref(true);
@@ -38,6 +39,10 @@ const fetchArticles = async () => {
       feedId: selectedFeedId.value,
       groupId: selectedGroupId.value,
       limit: 100
+    });
+    totalArticles.value = await (window as any).electron.ipcRenderer.invoke('get-total-article-count', {
+      feedId: selectedFeedId.value,
+      groupId: selectedGroupId.value
     });
   } finally {
     loading.value = false;
@@ -64,6 +69,15 @@ const filteredArticles = computed(() => {
 const selectArticle = (article: any) => {
   store.selectedArticle = article;
   isDetailsVisible.value = true;
+  
+  // 自动翻译逻辑 (后台运行)
+  if (store.settings.translation_enabled && !article.trans_title) {
+    // 简单判断是否为英文 (不包含中文字符)
+    const isEnglish = !/[\u4e00-\u9fa5]/.test(article.title);
+    if (isEnglish) {
+      store.translateArticle(article.id);
+    }
+  }
 };
 
 const toggleFavorite = async (article: any) => {
@@ -105,22 +119,8 @@ const openExternal = (url: string) => {
 };
 
 const translateArticle = async () => {
-  if (!store.selectedArticle || translating.value) return;
-  translating.value = true;
-  try {
-    const result = await (window as any).electron.ipcRenderer.invoke('translate-article', {
-      articleId: store.selectedArticle.id
-    });
-    if (result.success) {
-      store.selectedArticle.trans_title = result.trans_title;
-      store.selectedArticle.trans_abstract = result.trans_abstract;
-      ElMessage.success('翻译完成');
-    }
-  } catch (error: any) {
-    ElMessage.error('翻译失败: ' + error.message);
-  } finally {
-    translating.value = false;
-  }
+  if (!store.selectedArticle) return;
+  await store.translateArticle(store.selectedArticle.id);
 };
 
 const toggleTranslation = async () => {
@@ -199,7 +199,7 @@ const startResizing = (e: MouseEvent) => {
           >
             <BookOpen :size="16" class="mr-3" />
             全部文献
-            <span class="ml-auto text-[10px] opacity-50">{{ store.articles.length }}</span>
+            <span class="ml-auto text-[10px] opacity-50">{{ totalArticles }}</span>
           </button>
         </nav>
 
@@ -228,6 +228,7 @@ const startResizing = (e: MouseEvent) => {
               >
                 <div class="w-1.5 h-1.5 rounded-full bg-[var(--border)] mr-3 group-hover:bg-[var(--accent)] transition-colors shrink-0" :class="selectedFeedId === feed.id ? 'bg-[var(--accent)]' : ''"></div>
                 <span class="truncate">{{ feed.name }}</span>
+                <span class="ml-auto text-[10px] opacity-50 group-hover:opacity-100 transition-opacity">{{ feed.article_count || 0 }}</span>
               </button>
             </nav>
           </div>
@@ -261,6 +262,7 @@ const startResizing = (e: MouseEvent) => {
                 :title="feed.name"
               >
                 <span class="truncate">{{ feed.name }}</span>
+                <span class="ml-auto text-[10px] opacity-50 group-hover/item:opacity-100 transition-opacity">{{ feed.article_count || 0 }}</span>
               </button>
             </nav>
           </div>
@@ -314,20 +316,35 @@ const startResizing = (e: MouseEvent) => {
                 {{ article.title }}
               </template>
             </h3>
-            <button 
-              @click.stop="toggleFavorite(article)"
-              class="absolute top-5 right-5 p-1.5 rounded-lg hover:bg-[var(--bg-main)] transition-all"
-              :class="article.is_favorited ? 'text-[var(--warning)]' : 'text-[var(--text-muted)] hover:text-[var(--warning)]'"
-            >
-              <Star :size="18" :fill="article.is_favorited ? 'currentColor' : 'none'" />
-            </button>
+            <div class="absolute top-5 right-5 flex items-center gap-2">
+              <div v-if="store.translatingIds.includes(article.id)" class="flex items-center gap-1 text-[var(--accent)]">
+                <RefreshCw :size="14" class="animate-spin" />
+                <span class="text-[9px] font-bold uppercase tracking-tighter">Translating</span>
+              </div>
+              <button 
+                @click.stop="toggleFavorite(article)"
+                class="p-1.5 rounded-lg hover:bg-[var(--bg-main)] transition-all"
+                :class="article.is_favorited ? 'text-[var(--warning)]' : 'text-[var(--text-muted)] hover:text-[var(--warning)]'"
+              >
+                <Star :size="18" :fill="article.is_favorited ? 'currentColor' : 'none'" />
+              </button>
+            </div>
           </div>
           
-          <p class="text-xs text-[var(--text-muted)] mb-4 line-clamp-1 font-medium">{{ formatAuthors(article.authors) }}</p>
+          <p class="text-xs text-[var(--text-muted)] mb-2 line-clamp-1 font-medium">{{ formatAuthors(article.authors) }}</p>
           
+          <!-- 摘要预览 -->
+          <p class="text-[11px] text-[var(--text-muted)] mb-4 line-clamp-2 leading-relaxed italic opacity-80">
+            <template v-if="store.settings.translation_enabled && article.trans_abstract">
+              {{ article.trans_abstract }}
+            </template>
+            <template v-else>
+              {{ article.abstract }}
+            </template>
+          </p>
+
           <div class="flex items-center gap-4 text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider">
             <span class="flex items-center gap-1.5"><CalendarIcon :size="12" /> {{ article.publication_date }}</span>
-            <span class="flex items-center gap-1.5 truncate max-w-[200px]"><Hash :size="12" /> {{ getJournalName(article.journal_info) }}</span>
           </div>
         </div>
       </div>
@@ -371,8 +388,8 @@ const startResizing = (e: MouseEvent) => {
       <div class="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar">
         <div>
           <div class="flex items-center gap-3 mb-4">
-            <span class="bg-[var(--success)]/10 text-[var(--success)] text-[10px] font-bold px-2 py-0.5 rounded-md uppercase tracking-widest">Published</span>
-            <span class="text-[var(--text-muted)] text-[10px] font-bold uppercase tracking-widest">DOI: {{ store.selectedArticle.doi || 'N/A' }}</span>
+            <span v-if="store.selectedArticle.publication_date" class="bg-[var(--success)]/10 text-[var(--success)] text-[10px] font-bold px-2 py-0.5 rounded-md uppercase tracking-widest">Published</span>
+            <span v-if="store.selectedArticle.doi" class="text-[var(--text-muted)] text-[10px] font-bold uppercase tracking-widest">DOI: {{ store.selectedArticle.doi }}</span>
           </div>
           <h2 class="text-xl font-bold text-[var(--text-main)] leading-tight mb-6">
             <template v-if="store.settings.translation_enabled && store.selectedArticle.trans_title">
@@ -399,10 +416,10 @@ const startResizing = (e: MouseEvent) => {
               <el-button 
                 v-if="!store.selectedArticle.trans_title"
                 @click="translateArticle" 
-                :loading="translating"
+                :loading="store.translatingIds.includes(store.selectedArticle.id)"
                 class="!h-7 !px-3 !rounded-lg !text-[9px] !font-bold !bg-[var(--accent)]/10 !text-[var(--accent)] !border-none uppercase tracking-widest"
               >
-                <Languages :size="12" class="mr-1.5" /> 一键翻译
+                <Languages :size="12" class="mr-1.5" /> {{ store.translatingIds.includes(store.selectedArticle.id) ? '翻译中...' : '一键翻译' }}
               </el-button>
             </div>
             <p class="text-sm text-[var(--text-main)] leading-relaxed font-semibold">{{ formatAuthors(store.selectedArticle.authors) }}</p>

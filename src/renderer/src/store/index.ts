@@ -23,6 +23,7 @@ export const useMainStore = defineStore('main', {
     updateProgress: { current: 0, total: 0, percent: 0 },
     groups: [] as any[],
     articles: [] as any[],
+    translatingIds: [] as number[],
     selectedArticle: null as any,
     chatHistory: [] as any[],
     tokenUsage: {
@@ -73,6 +74,35 @@ export const useMainStore = defineStore('main', {
     },
     async fetchArticles(params: any) {
       this.articles = await (window as any).electron.ipcRenderer.invoke('get-articles', params);
+    },
+    async translateArticle(articleId: number) {
+      if (this.translatingIds.includes(articleId)) return;
+      
+      // 检查是否已经翻译过
+      const article = this.articles.find(a => a.id === articleId);
+      if (article && article.trans_title) return;
+
+      this.translatingIds.push(articleId);
+      try {
+        const result = await (window as any).electron.ipcRenderer.invoke('translate-article', { articleId });
+        if (result.success) {
+          // 更新列表中的文章
+          const index = this.articles.findIndex(a => a.id === articleId);
+          if (index !== -1) {
+            this.articles[index].trans_title = result.trans_title;
+            this.articles[index].trans_abstract = result.trans_abstract;
+          }
+          // 如果当前选中的是这篇文章，也更新它
+          if (this.selectedArticle && this.selectedArticle.id === articleId) {
+            this.selectedArticle.trans_title = result.trans_title;
+            this.selectedArticle.trans_abstract = result.trans_abstract;
+          }
+        }
+      } catch (error) {
+        console.error('Translation failed:', error);
+      } finally {
+        this.translatingIds = this.translatingIds.filter(id => id !== articleId);
+      }
     },
     async fetchChatHistory() {
       this.chatHistory = await (window as any).electron.ipcRenderer.invoke('get-chat-history');

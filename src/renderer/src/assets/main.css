@@ -1,0 +1,164 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg-main: #F8FAFC;
+    --bg-card: #FFFFFF;
+    --bg-sidebar: #F1F5F9;
+    --text-main: #0F172A;
+    --text-muted: #64748B;
+    --accent: #3B82F6;
+    --border: #E2E8F0;
+    --success: #10B981;
+    --warning: #F59E0B;
+    --error: #EF4444;
+  }
+
+  .dark {
+    --bg-main: #0F172A;
+    --bg-card: #1E293B;
+    --bg-sidebar: #111827;
+    --text-main: #F1F5F9;
+    --text-muted: #94A3B8;
+    --accent: #60A5FA;
+    --border: #334155;
+    --success: #34D399;
+    --warning: #FBBF24;
+    --error: #F87171;
+  }
+
+  body {
+    @apply bg-[var(--bg-main)] text-[var(--text-main)] font-sans antialiased transition-colors duration-200;
+    margin: 0;
+    padding: 0;
+    height: 100vh;
+    width: 100vw;
+    overflow: hidden;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+
+  #app {
+    @apply h-full w-full;
+  }
+}
+
+@layer components {
+  .custom-scrollbar::-webkit-scrollbar {
+    @apply w-1.5 h-1.5;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply rounded-full transition-colors;
+    background-color: rgba(156, 163, 175, 0.3);
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(59, 130, 246, 0.5);
+  }
+
+  .dark .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-slate-700 hover:bg-slate-600;
+  }
+
+  .glass-effect {
+    @apply bg-[var(--bg-card)]/80 backdrop-blur-md border border-[var(--border)];
+  }
+}
+
+/* Element Plus Overrides */
+.el-input__wrapper {
+  @apply !bg-[var(--bg-card)] !shadow-none !border-none ring-1 ring-[var(--border)] !transition-all !rounded-lg !px-3 !py-1.5 !important;
+}
+
+.el-input__wrapper.is-focus {
+  @apply !ring-[var(--accent)] !ring-2 !important;
+}
+
+.el-input__inner {
+  @apply !text-[var(--text-main)] placeholder:!text-[var(--text-muted)] !text-sm !important;
+}
+
+.el-button {
+  @apply !rounded-lg !font-medium !transition-all !duration-200 !px-4 !py-2 !h-auto !border-[var(--border)] !bg-[var(--bg-card)] !text-[var(--text-main)] !important;
+}
+
+.el-button--primary {
+  @apply !bg-[var(--accent)] !border-none !text-white !shadow-sm hover:!opacity-90 !important;
+}
+
+.el-dialog {
+  @apply !bg-[var(--bg-card)] !rounded-2xl !border !border-[var(--border)] !shadow-2xl !p-0 !important;
+}
+
+.el-message-box {
+  @apply !bg-[var(--bg-card)] !border-[var(--border)] !rounded-2xl !shadow-2xl !important;
+}
+
+.el-message-box__title {
+  @apply !text-[var(--text-main)] !font-bold !important;
+}
+
+.el-message-box__content {
+  @apply !text-[var(--text-muted)] !important;
+}
+
+.el-message-box__input .el-input__wrapper {
+  @apply !bg-[var(--bg-main)] !important;
+}
+
+.el-dialog__header {
+  @apply !p-6 !border-b !border-[var(--border)] !m-0 !important;
+}
+
+.el-dialog__title {
+  @apply !text-[var(--text-main)] !font-semibold !text-lg !important;
+}
+
+.el-dialog__body {
+  @apply !p-6 !important;
+}
+
+.el-calendar {
+  @apply !bg-transparent !border-none !important;
+}
+
+.el-calendar-table td {
+  @apply !border-none !important;
+}
+
+.el-calendar-table .el-calendar-day {
+  @apply !h-10 !flex !items-center !justify-center !text-sm !rounded-lg !m-0.5 !transition-colors !important;
+}
+
+.el-calendar-table .el-calendar-day:hover {
+  background-color: rgba(122, 162, 247, 0.1) !important;
+  color: var(--accent) !important;
+}
+
+.el-calendar-table td.is-selected .el-calendar-day {
+  @apply !bg-[var(--accent)] !text-white !important;
+}
+
+.el-message {
+  @apply !bg-[var(--bg-card)] !border-[var(--border)] !rounded-xl !shadow-xl !important;
+}
+
+.el-message__content {
+  @apply !text-[var(--text-main)] !font-medium !important;
+}
+
+/* Transitions */
+.fade-enter-active, .fade-leave-active {
+  transition: all 0.2s ease;
+}
+
+.fade-enter-from, .fade-leave-to {
+  opacity: 0;
+  transform: translateY(4px);
+}

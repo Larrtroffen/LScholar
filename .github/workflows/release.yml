@@ -17,10 +17,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'pnpm'
           
-      - name: Enable pnpm
-        run: corepack enable && corepack prepare pnpm@9 --activate
+      - name: Install pnpm
+        run: npm install -g pnpm
         
       - name: Install dependencies
         run: pnpm install

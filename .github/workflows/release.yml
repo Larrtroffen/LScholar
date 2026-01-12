@@ -27,14 +27,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install
         
-      - name: Build application
-        run: pnpm build
+      - name: Build vite
+        run: pnpm vite build
         
       - name: Build for Linux
         run: pnpm electron:build --linux --publish never
         
       - name: Build for Windows
-        run: pnpm electron:build --win
+        run: pnpm electron:build --win --publish never
         
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4

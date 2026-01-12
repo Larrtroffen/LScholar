@@ -3,7 +3,10 @@
   "version": "1.0.0",
   "description": "LScholar: A beautiful, efficient, and intelligent desktop tool for academic literature tracking.",
   "main": "dist/main/index.js",
-  "author": "LarRs",
+  "author": {
+    "name": "Larr",
+    "email": "larrtroffen.gl@gmail.com"
+  },
   "license": "MIT",
   "scripts": {
     "dev": "vite",

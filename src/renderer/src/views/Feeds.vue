@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, toRaw, onMounted } from 'vue';
-import { useMainStore } from '../store';
+import { useDataStore } from '../store/data';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import IntervalSlider from '../components/IntervalSlider.vue';
 import { 
@@ -21,7 +21,7 @@ import {
   Clock
 } from 'lucide-vue-next';
 
-const store = useMainStore();
+const store = useDataStore();
 const showAddModal = ref(false);
 const isEditing = ref(false);
 const adding = ref(false);
@@ -148,7 +148,7 @@ const generateScript = async () => {
    - authors: 作者姓名数组 (例如 ["Author A", "Author B"])
    - abstract: 摘要或内容简介
    - url: 文章原文链接
-   - publication_date: 发布日期字符串
+   - publication_date: 发布日期字符串 (请尽量转换为 YYYY-MM-DD)
 4. 针对学术 RSS（如知网 CNKI、arXiv），请特别注意提取 'author'、'dc:creator' 或 'dc:author' 标签。
 5. 针对摘要，请优先提取 'description'、'summary' 或 'content:encoded'。
 6. 针对知网格式，作者可能在 <author> 标签中，且带有分号，请注意清洗。

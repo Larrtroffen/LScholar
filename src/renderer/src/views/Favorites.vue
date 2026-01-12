@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
-import { useMainStore } from '../store';
+import { useDataStore } from '../store/data';
 import { 
   Star, 
   Download, 
@@ -19,15 +19,15 @@ import {
 } from 'lucide-vue-next';
 import { ElMessage } from 'element-plus';
 
-const store = useMainStore();
+const store = useDataStore();
 const favorites = ref<any[]>([]);
 const selectedIds = ref<number[]>([]);
 const exporting = ref(false);
 const searchQuery = ref('');
 
 const fetchFavorites = async () => {
-  const all = await (window as any).electron.ipcRenderer.invoke('get-articles', { limit: 1000 });
-  favorites.value = all.filter((a: any) => a.is_favorited);
+  const all = await (window as any).electron.ipcRenderer.invoke('article:get-all', 1000);
+  favorites.value = all.filter((a: any) => a.is_favorite);
 };
 
 onMounted(fetchFavorites);
@@ -65,6 +65,10 @@ const exportToZotero = async () => {
     const result = await (window as any).electron.ipcRenderer.invoke('export-to-ris', JSON.parse(JSON.stringify(selectedIds.value)));
     if (result.success) {
       ElMessage.success('文献已成功导出为 RIS 格式');
+    } else {
+      if (result.message !== 'Cancelled') {
+        ElMessage.error(`导出失败: ${result.message}`);
+      }
     }
   } catch (error: any) {
     ElMessage.error(`导出失败: ${error.message}`);
@@ -75,7 +79,7 @@ const exportToZotero = async () => {
 
 const removeFromFavorites = async (id: number) => {
   try {
-    await (window as any).electron.ipcRenderer.invoke('toggle-favorite', { id, isFavorited: false });
+    await (window as any).electron.ipcRenderer.invoke('article:toggle-favorite', id);
     favorites.value = favorites.value.filter(f => f.id !== id);
     selectedIds.value = selectedIds.value.filter(sid => sid !== id);
     ElMessage.success('已从收藏中移除');

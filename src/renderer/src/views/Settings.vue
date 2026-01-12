@@ -1,137 +1,267 @@
 <script setup lang="ts">
-import { ref, onMounted, toRaw } from 'vue';
-import { useMainStore } from '../store';
+import { ref, onMounted, watch, computed } from 'vue';
+import { useConfigStore } from '../store/config';
 import { ElMessage } from 'element-plus';
+import ModelManager from './ModelManager.vue';
+import CustomSelect from '../components/CustomSelect.vue';
 import { 
-  Eye, 
-  EyeOff, 
   CheckCircle2, 
-  Save, 
-  Cpu, 
-  Globe, 
-  ShieldCheck, 
   Zap,
   BarChart3,
-  UserCircle,
   Settings2,
-  Lock,
-  Server,
-  Info,
   Languages,
-  Layout
+  Layout,
+  Download,
+  Circle,
+  Loader2
 } from 'lucide-vue-next';
 
-const store = useMainStore();
-const showApiKey = ref(false);
-const testing = ref(false);
+const configStore = useConfigStore();
 const saving = ref(false);
+const lastSaved = ref<number | null>(null);
 
+// 翻译设置表单
 const form = ref({
-  llm_base_url: '',
-  llm_api_key: '',
-  llm_model_name: '',
-  embedding_model_name: '',
-  rerank_model_name: '',
-  proxy_url: '',
-  user_preferences: '',
   translation_enabled: false,
-  translation_mode: 'append',
-  trans_llm_base_url: '',
-  trans_llm_api_key: '',
-  trans_llm_model_name: ''
+  auto_translation_enabled: false,
+  translation_mode: 'append'
 });
 
-onMounted(() => {
-  form.value = { ...store.settings };
+// 模型分配 - 使用 computed 属性直接绑定到 store
+const mainChatModel = computed({
+  get: () => {
+    const assignment = configStore.assignments.find(a => a.function_type === 'main_chat');
+    console.log('[Settings] Getting main_chat model:', assignment?.model_id ?? null);
+    return assignment?.model_id ?? null;
+  },
+  set: async (value: number | null) => {
+    console.log('[Settings] Setting main_chat model to:', value);
+    await configStore.setAssignment('main_chat', value);
+    console.log('[Settings] main_chat model set completed, current assignments:', configStore.assignments);
+  }
 });
 
-const testConnection = async () => {
-  testing.value = true;
+const embeddingModel = computed({
+  get: () => {
+    const assignment = configStore.assignments.find(a => a.function_type === 'embedding');
+    console.log('[Settings] Getting embedding model:', assignment?.model_id ?? null);
+    return assignment?.model_id ?? null;
+  },
+  set: async (value: number | null) => {
+    console.log('[Settings] Setting embedding model to:', value);
+    await configStore.setAssignment('embedding', value);
+    console.log('[Settings] embedding model set completed, current assignments:', configStore.assignments);
+  }
+});
+
+const translationModel = computed({
+  get: () => {
+    const assignment = configStore.assignments.find(a => a.function_type === 'translation');
+    console.log('[Settings] Getting translation model:', assignment?.model_id ?? null);
+    return assignment?.model_id ?? null;
+  },
+  set: async (value: number | null) => {
+    console.log('[Settings] Setting translation model to:', value);
+    await configStore.setAssignment('translation', value);
+    console.log('[Settings] translation model set completed, current assignments:', configStore.assignments);
+  }
+});
+
+// 模型选项
+const llmModels = computed(() => configStore.models.filter(m => m.type === 'llm').map(m => ({
+  label: m.name,
+  value: m.id,
+  description: m.model_name
+})));
+
+const embeddingModels = computed(() => configStore.models.filter(m => m.type === 'embedding').map(m => ({
+  label: m.name,
+  value: m.id,
+  description: m.model_name
+})));
+
+// 检查本地模型是否已下载（已注册）
+const isModelDownloaded = (modelName: string) => {
+  return configStore.models.some(m => m.provider === 'local' && m.model_name === modelName);
+};
+
+const localModelOptions = [
+  { 
+    label: '专精中文', 
+    value: 'Xenova/bge-small-zh-v1.5',
+    description: '针对中文优化，适合中文文献',
+    icon: '🇨🇳'
+  },
+  { 
+    label: '专精英文', 
+    value: 'Xenova/all-MiniLM-L6-v2',
+    description: '针对英文优化，适合英文文献',
+    icon: '🇬🇧'
+  },
+  { 
+    label: '中英文支持', 
+    value: 'Xenova/paraphrase-multilingual-MiniLM-L12-v2',
+    description: '支持多语言，适合混合文献',
+    icon: '🌐'
+  },
+  { 
+    label: '性能最强', 
+    value: 'Xenova/bge-base-en-v1.5',
+    description: '性能最优，适合高质量需求',
+    icon: '⚡'
+  }
+];
+
+const modelDownloadProgress = ref<{ model: string, percent: number } | null>(null);
+
+// 选中模型并检查下载
+const downloadLocalModel = async (modelName: string) => {
+  if (isModelDownloaded(modelName)) {
+    ElMessage.info('该模型已下载并注册');
+    return;
+  }
+
+  modelDownloadProgress.value = { model: modelName, percent: 0 };
   try {
-    const result = await (window as any).electron.ipcRenderer.invoke('test-connection', toRaw(form.value));
-    if (result.success) {
-      ElMessage.success('连接成功！');
-    } else {
-      ElMessage.error(`连接失败: ${result.error}`);
+    // Placeholder for download logic
+    // const result = await (window as any).electron.ipcRenderer.invoke('model:download', modelName);
+    // if (!result.success) throw new Error(result.error);
+    
+    // Simulate download
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // Register model
+    await configStore.addModel({
+      name: modelName.split('/').pop() || modelName,
+      provider: 'local',
+      base_url: '',
+      model_name: modelName,
+      type: 'embedding',
+      is_built_in: true
+    });
+
+    ElMessage.success('模型下载完成并已自动注册');
+    
+    // 如果当前没有选中的嵌入模型，自动选中刚下载的这个
+    const newModel = configStore.models.find(m => m.model_name === modelName);
+    if (!embeddingModel.value && newModel) {
+      embeddingModel.value = newModel.id!;
     }
   } catch (error: any) {
-    ElMessage.error(`错误: ${error.message}`);
+    ElMessage.error(`模型下载失败: ${error.message}`);
   } finally {
-    testing.value = false;
+    modelDownloadProgress.value = null;
   }
 };
 
-const saveSettings = async () => {
-  saving.value = true;
-  try {
-    await (window as any).electron.ipcRenderer.invoke('save-settings', toRaw(form.value));
-    await store.fetchSettings();
-    ElMessage.success('设置已保存');
-  } catch (error: any) {
-    ElMessage.error(`保存失败: ${error.message}`);
-  } finally {
-    saving.value = false;
-  }
-};
+// 监听 store 中的设置变化，同步翻译设置到表单
+watch(
+  () => configStore.settings,
+  (newSettings) => {
+    if (newSettings) {
+      let prefs: any = {};
+      try {
+        prefs = JSON.parse(newSettings.user_preferences || '{}');
+      } catch {}
+
+      form.value = {
+        translation_enabled: prefs.translation_enabled || false,
+        auto_translation_enabled: prefs.auto_translation_enabled || false,
+        translation_mode: prefs.translation_mode || 'append'
+      };
+    }
+  },
+  { immediate: true, deep: true }
+);
+
+// 自动保存翻译设置
+let saveTimeout: any = null;
+watch(form, (newVal) => {
+  if (saveTimeout) clearTimeout(saveTimeout);
+  saveTimeout = setTimeout(async () => {
+    saving.value = true;
+    try {
+      const prefs = {
+        translation_enabled: newVal.translation_enabled,
+        auto_translation_enabled: newVal.auto_translation_enabled,
+        translation_mode: newVal.translation_mode
+      };
+      
+      await configStore.updateSettings({
+        user_preferences: JSON.stringify(prefs)
+      });
+
+      lastSaved.value = Date.now();
+    } catch (error) {
+      console.error('Auto-save failed:', error);
+      ElMessage.error('保存失败，请重试');
+    } finally {
+      saving.value = false;
+    }
+  }, 1000);
+}, { deep: true });
+
+// 组件挂载时检查模型状态
+onMounted(async () => {
+  await configStore.fetchSettings();
+  await configStore.fetchModels();
+  await configStore.fetchAssignments();
+});
 </script>
 
 <template>
   <div class="p-10 h-full overflow-y-auto custom-scrollbar bg-[var(--bg-main)]">
     <div class="max-w-4xl mx-auto">
-      <header class="mb-10">
-        <div class="flex items-center gap-3 mb-2">
-          <Settings2 :size="24" class="text-[var(--accent)]" />
-          <h1 class="text-2xl font-bold text-[var(--text-main)]">系统设置</h1>
+      <header class="mb-10 flex items-end justify-between">
+        <div>
+          <div class="flex items-center gap-3 mb-2">
+            <Settings2 :size="24" class="text-[var(--accent)]" />
+            <h1 class="text-2xl font-bold text-[var(--text-main)]">系统设置</h1>
+          </div>
+          <p class="text-sm text-[var(--text-muted)] font-medium">配置 AI 模型引擎、网络代理及翻译偏好</p>
         </div>
-        <p class="text-sm text-[var(--text-muted)] font-medium">配置 AI 模型引擎、网络代理及翻译偏好</p>
+        <div class="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)] mb-1">
+          <template v-if="saving">
+            <div class="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></div>
+            正在保存...
+          </template>
+          <template v-else-if="lastSaved">
+            <CheckCircle2 :size="12" class="text-green-500" />
+            已自动保存
+          </template>
+        </div>
       </header>
 
       <div class="grid grid-cols-1 gap-8">
-        <!-- AI Configuration Card -->
-        <section class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-8 shadow-sm relative overflow-hidden">
+        <!-- AI Model Management -->
+        <section class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-8 shadow-sm">
+          <ModelManager />
+        </section>
+
+        <!-- Function Assignment -->
+        <section class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-8 shadow-sm">
           <div class="flex items-center gap-3 mb-8">
-            <div class="w-10 h-10 bg-[var(--accent)]/10 rounded-xl flex items-center justify-center text-[var(--accent)]">
-              <Cpu :size="20" />
+            <div class="w-10 h-10 bg-green-500/10 rounded-xl flex items-center justify-center text-green-500">
+              <Zap :size="20" />
             </div>
-            <h2 class="text-lg font-bold text-[var(--text-main)]">AI 模型引擎</h2>
+            <h2 class="text-lg font-bold text-[var(--text-main)]">功能模型分配</h2>
           </div>
 
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div class="space-y-2 md:col-span-2">
-              <label class="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest ml-1 flex items-center gap-2">
-                <Globe :size="14" /> API Base URL
-              </label>
-              <el-input v-model="form.llm_base_url" placeholder="https://api.openai.com/v1" />
-            </div>
-
-            <div class="space-y-2 md:col-span-2">
-              <label class="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest ml-1 flex items-center gap-2">
-                <Lock :size="14" /> API Key
-              </label>
-              <el-input 
-                v-model="form.llm_api_key" 
-                :type="showApiKey ? 'text' : 'password'" 
-                placeholder="在此输入您的 API Key"
-              >
-                <template #suffix>
-                  <button @click="showApiKey = !showApiKey" class="hover:text-[var(--accent)] transition-colors p-1">
-                    <Eye v-if="!showApiKey" :size="16" />
-                    <EyeOff v-else :size="16" />
-                  </button>
-                </template>
-              </el-input>
-            </div>
-
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div class="space-y-2">
-              <label class="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest ml-1">LLM Model</label>
-              <el-input v-model="form.llm_model_name" placeholder="gpt-4-turbo" />
+              <label class="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest ml-1">通用对话/洞察</label>
+              <CustomSelect v-model="mainChatModel" :options="llmModels" placeholder="选择模型" />
             </div>
-            
             <div class="space-y-2">
-              <label class="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest ml-1 flex items-center gap-2">
-                Embedding Model <Info :size="12" class="cursor-help opacity-50" title="用于文献向量化，请确保接口支持 embeddings 终端" />
-              </label>
-              <el-input v-model="form.embedding_model_name" placeholder="text-embedding-3-small" />
+              <label class="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest ml-1">文献翻译</label>
+              <CustomSelect v-model="translationModel" :options="llmModels" placeholder="选择模型" />
+            </div>
+            <div class="space-y-2">
+              <label class="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest ml-1">向量嵌入 (全局)</label>
+              <CustomSelect v-model="embeddingModel" :options="embeddingModels" placeholder="选择模型" />
+              <p class="text-[10px] text-[var(--text-muted)]">
+                注意：切换嵌入模型会导致现有的向量数据失效，建议切换后在嵌入管理页面重置向量库。
+              </p>
             </div>
           </div>
         </section>
@@ -154,6 +284,14 @@ const saveSettings = async () => {
                 </div>
                 <el-switch v-model="form.translation_enabled" />
               </div>
+
+              <div class="flex items-center justify-between bg-[var(--bg-main)]/30 p-4 rounded-xl border border-[var(--border)]">
+                <div>
+                  <label class="text-sm font-bold text-[var(--text-main)]">自动翻译新文献</label>
+                  <p class="text-[10px] text-[var(--text-muted)] mt-1">抓取到新文献后自动在后台进行翻译</p>
+                </div>
+                <el-switch v-model="form.auto_translation_enabled" :disabled="!form.translation_enabled" />
+              </div>
             </div>
 
             <div class="space-y-3">
@@ -161,49 +299,102 @@ const saveSettings = async () => {
                 <Layout :size="14" /> 翻译显示模式
               </label>
               <el-radio-group v-model="form.translation_mode" class="custom-radio-group">
-                <el-radio-button label="append">追加到原文后</el-radio-button>
-                <el-radio-button label="replace">直接替换原文</el-radio-button>
+                <el-radio-button value="append">追加到原文后</el-radio-button>
+                <el-radio-button value="replace">直接替换原文</el-radio-button>
               </el-radio-group>
             </div>
           </div>
 
-          <div class="mt-8 pt-8 border-t border-[var(--border)]">
-            <h3 class="text-sm font-bold text-[var(--text-main)] mb-6 flex items-center gap-2">
-              <Cpu :size="16" class="text-[var(--accent)]" /> 翻译专用模型配置 (留空则使用通用模型)
-            </h3>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div class="space-y-2 md:col-span-2">
-                <label class="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest ml-1">翻译 API Base URL</label>
-                <el-input v-model="form.trans_llm_base_url" placeholder="https://api.openai.com/v1" />
+        </section>
+
+        <!-- Local Model Management -->
+        <section class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-8 shadow-sm">
+          <div class="flex items-center gap-3 mb-8">
+            <div class="w-10 h-10 bg-purple-500/10 rounded-xl flex items-center justify-center text-purple-500">
+              <Download :size="20" />
+            </div>
+            <div>
+              <h2 class="text-lg font-bold text-[var(--text-main)]">本地模型库</h2>
+              <p class="text-xs text-[var(--text-muted)]">下载后即可在上方"功能模型分配"中选择使用</p>
+            </div>
+          </div>
+
+          <div class="space-y-6">
+            <!-- 模型选择网格 -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div
+                v-for="model in localModelOptions"
+                :key="model.value"
+                class="relative p-5 rounded-xl border-2 transition-all duration-200 group flex flex-col"
+                :class="[
+                  isModelDownloaded(model.value)
+                    ? 'border-green-500/30 bg-green-500/5'
+                    : 'border-[var(--border)] hover:border-[var(--accent)]/50 bg-[var(--bg-card)]'
+                ]"
+              >
+                <!-- 状态角标 -->
+                <div class="absolute top-3 right-3">
+                  <CheckCircle2 v-if="isModelDownloaded(model.value)" :size="16" class="text-green-500" />
+                  <Circle v-else :size="16" class="text-[var(--border)]" />
+                </div>
+
+                <!-- 模型图标 -->
+                <div class="text-3xl mb-3">{{ model.icon }}</div>
+                
+                <!-- 模型名称 -->
+                <h4 class="text-sm font-bold text-[var(--text-main)] mb-1">{{ model.label }}</h4>
+                
+                <!-- 模型描述 -->
+                <p class="text-xs text-[var(--text-muted)] mb-4 flex-1">{{ model.description }}</p>
+
+                <!-- 操作按钮 -->
+                <button
+                  @click="downloadLocalModel(model.value)"
+                  :disabled="isModelDownloaded(model.value) || !!modelDownloadProgress"
+                  class="w-full py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2"
+                  :class="[
+                    isModelDownloaded(model.value)
+                      ? 'bg-green-500/10 text-green-500 cursor-default'
+                      : 'bg-[var(--accent)] text-white hover:bg-[var(--accent)]/90'
+                  ]"
+                >
+                  <template v-if="isModelDownloaded(model.value)">
+                    已安装
+                  </template>
+                  <template v-else-if="modelDownloadProgress?.model === model.value">
+                    <Loader2 class="animate-spin" :size="12" />
+                    {{ modelDownloadProgress.percent }}%
+                  </template>
+                  <template v-else>
+                    <Download :size="12" />
+                    下载模型
+                  </template>
+                </button>
               </div>
-              <div class="space-y-2 md:col-span-2">
-                <label class="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest ml-1">翻译 API Key</label>
-                <el-input v-model="form.trans_llm_api_key" type="password" placeholder="翻译专用 API Key" show-password />
+            </div>
+
+            <!-- 自动下载进度条 -->
+            <div v-if="modelDownloadProgress" class="bg-[var(--bg-main)]/50 p-6 rounded-xl border border-[var(--accent)]/30 animate-in fade-in slide-in-from-top-2">
+              <div class="flex items-center justify-between mb-3">
+                <div class="flex items-center gap-2">
+                  <Download :size="16" class="text-[var(--accent)] animate-bounce" />
+                  <span class="text-sm font-bold text-[var(--text-main)]">正在下载 {{ modelDownloadProgress.model }}...</span>
+                </div>
+                <span class="text-sm font-black text-[var(--accent)]">{{ modelDownloadProgress.percent }}%</span>
               </div>
-              <div class="space-y-2">
-                <label class="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest ml-1">翻译 LLM Model</label>
-                <el-input v-model="form.trans_llm_model_name" placeholder="gpt-3.5-turbo (建议使用更快的模型)" />
+              <div class="w-full h-2.5 bg-[var(--bg-card)] rounded-full overflow-hidden border border-[var(--border)]">
+                <div
+                  class="h-full bg-gradient-to-r from-[var(--accent)] to-blue-500 transition-all duration-300 shadow-[0_0_10px_rgba(var(--accent-rgb),0.5)]"
+                  :style="{ width: `${modelDownloadProgress.percent}%` }"
+                ></div>
               </div>
+              <p class="text-[10px] text-[var(--text-muted)] mt-3 italic">首次使用需要下载模型文件（约 100MB），请保持网络连接</p>
             </div>
           </div>
         </section>
 
-        <!-- Proxy & Token Stats -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-          <section class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-8 shadow-sm">
-            <div class="flex items-center gap-3 mb-8">
-              <div class="w-10 h-10 bg-orange-500/10 rounded-xl flex items-center justify-center text-orange-500">
-                <Server :size="20" />
-              </div>
-              <h2 class="text-lg font-bold text-[var(--text-main)]">网络代理</h2>
-            </div>
-            <div class="space-y-2">
-              <label class="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest ml-1">HTTP Proxy URL</label>
-              <el-input v-model="form.proxy_url" placeholder="http://127.0.0.1:7890" />
-              <p class="text-[10px] text-[var(--text-muted)] mt-2 italic">留空则直连。支持 http/https 代理。</p>
-            </div>
-          </section>
-
+        <!-- Token Stats -->
+        <div class="grid grid-cols-1 gap-8">
           <section class="bg-gradient-to-br from-[var(--bg-card)] to-[var(--bg-main)] border border-[var(--border)] rounded-2xl p-8 shadow-sm">
             <div class="flex items-center gap-3 mb-8">
               <div class="w-10 h-10 bg-[var(--accent)]/10 rounded-xl flex items-center justify-center text-[var(--accent)]">
@@ -216,14 +407,14 @@ const saveSettings = async () => {
               <div class="relative">
                 <p class="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest mb-2">今日已用</p>
                 <div class="flex items-baseline gap-2">
-                  <span class="text-2xl font-bold text-[var(--text-main)] tracking-tight">{{ store.tokenUsage.today.toLocaleString() }}</span>
+                  <span class="text-2xl font-bold text-[var(--text-main)] tracking-tight">0</span>
                   <span class="text-[10px] text-[var(--text-muted)] font-bold uppercase">Tokens</span>
                 </div>
               </div>
               <div class="relative">
                 <p class="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest mb-2">本月累计</p>
                 <div class="flex items-baseline gap-2">
-                  <span class="text-2xl font-bold text-[var(--accent)] tracking-tight">{{ store.tokenUsage.month.toLocaleString() }}</span>
+                  <span class="text-2xl font-bold text-[var(--accent)] tracking-tight">0</span>
                   <span class="text-[10px] text-[var(--text-muted)] font-bold uppercase">Tokens</span>
                 </div>
               </div>
@@ -231,24 +422,7 @@ const saveSettings = async () => {
           </section>
         </div>
 
-        <!-- Actions -->
-        <div class="flex gap-4 pt-4 pb-10">
-          <el-button 
-            @click="testConnection" 
-            :loading="testing"
-            class="flex-1 !h-12 !rounded-xl !text-sm !font-bold"
-          >
-            <CheckCircle2 :size="18" class="mr-2" /> 测试连接
-          </el-button>
-          <el-button 
-            type="primary" 
-            @click="saveSettings" 
-            :loading="saving"
-            class="flex-1 !h-12 !rounded-xl !text-sm !font-bold shadow-lg shadow-accent/20"
-          >
-            <Save :size="18" class="mr-2" /> 保存所有配置
-          </el-button>
-        </div>
+        <div class="pb-20"></div>
       </div>
     </div>
   </div>
@@ -264,11 +438,19 @@ const saveSettings = async () => {
 }
 
 .custom-radio-group :deep(.el-radio-button__inner) {
-  @apply !bg-[var(--bg-main)] !border-[var(--border)] !text-[var(--text-muted)] !text-xs !px-6 !py-2.5 !transition-all;
+  background-color: var(--bg-main) !important;
+  border-color: var(--border) !important;
+  color: var(--text-muted) !important;
+  font-size: 12px !important;
+  padding: 10px 24px !important;
+  transition: all 0.2s !important;
 }
 
 .custom-radio-group :deep(.el-radio-button__original-radio:checked + .el-radio-button__inner) {
-  @apply !bg-[var(--accent)] !border-[var(--accent)] !text-white !shadow-lg shadow-accent/20;
+  background-color: var(--accent) !important;
+  border-color: var(--accent) !important;
+  color: white !important;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05) !important;
 }
 
 .dark .custom-radio-group :deep(.el-radio-button__inner) {

@@ -1,15 +1,20 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, dialog, Menu, MenuItem } from 'electron';
 import path from 'path';
 import { initSqlite } from './db';
-import { registerIpcHandlers } from './ipc';
-import { startScheduler } from './rss';
+import { setupIpc } from './ipc';
+import { eventBus } from './events';
+import { configService } from './services/ConfigService';
 
 // 异常捕获修复版
-(process as any).on('uncaughtException', (error: Error) => {
-  console.error('Main process exception:', error);
+process.on('uncaughtException', (error: Error) => {
+  console.error('❌ Main process uncaughtException:', error);
   if (app.isPackaged) {
     dialog.showErrorBox('Main Process Error', error.stack || error.message);
   }
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Main process unhandledRejection at:', promise, 'reason:', reason);
 });
 
 function createWindow() {
@@ -29,6 +34,53 @@ function createWindow() {
   });
 
   mainWindow.setMenu(null);
+  
+  // 自动打开开发者工具以便调试
+  mainWindow.webContents.openDevTools();
+
+  // 添加右键菜单
+  mainWindow.webContents.on('context-menu', (event, params) => {
+    const menu = new Menu();
+
+    // 添加复制选项（如果有选中文本）
+    if (params.selectionText) {
+      menu.append(new MenuItem({
+        label: '复制',
+        role: 'copy',
+        accelerator: 'CmdOrCtrl+C'
+      }));
+    }
+
+    // 添加剪切选项（如果有选中文本且在可编辑区域）
+    if (params.isEditable && params.selectionText) {
+      menu.append(new MenuItem({
+        label: '剪切',
+        role: 'cut',
+        accelerator: 'CmdOrCtrl+X'
+      }));
+    }
+
+    // 添加粘贴选项（如果在可编辑区域）
+    if (params.isEditable) {
+      menu.append(new MenuItem({
+        label: '粘贴',
+        role: 'paste',
+        accelerator: 'CmdOrCtrl+V'
+      }));
+    }
+
+    // 添加全选选项
+    menu.append(new MenuItem({
+      label: '全选',
+      role: 'selectAll',
+      accelerator: 'CmdOrCtrl+A'
+    }));
+
+    // 如果菜单有内容，则显示
+    if (menu.items.length > 0) {
+      menu.popup({ window: mainWindow, x: params.x, y: params.y });
+    }
+  });
 
   if (process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
@@ -44,12 +96,24 @@ function createWindow() {
 app.disableHardwareAcceleration();
 
 app.whenReady().then(() => {
+  console.log('🚀 App is ready, initializing...');
   try {
+    console.log('1. Initializing SQLite...');
     initSqlite();
-    registerIpcHandlers();
-    startScheduler();
+
+    console.log('1.5. Initializing Services...');
+    configService.initialize();
+    
+    console.log('2. Registering IPC handlers...');
+    setupIpc();
+    
+    console.log('3. Creating Main Window...');
     createWindow();
+    
+    console.log('✅ Initialization complete');
+    eventBus.emit('app:ready');
   } catch (error: any) {
+    console.error('❌ Initialization failed:', error);
     dialog.showErrorBox('Init Error', error.message || 'Failed to initialize app');
   }
 
@@ -59,5 +123,6 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', function () {
+  eventBus.emit('app:quit');
   if (process.platform !== 'darwin') app.quit();
 });

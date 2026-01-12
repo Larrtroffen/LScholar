@@ -5,6 +5,7 @@
 @layer base {
   :root {
     --bg-main: #F8FAFC;
+    --bg-main-rgb: 248, 250, 252;
     --bg-card: #FFFFFF;
     --bg-sidebar: #F1F5F9;
     --text-main: #0F172A;
@@ -18,6 +19,7 @@
 
   .dark {
     --bg-main: #0F172A;
+    --bg-main-rgb: 15, 23, 42;
     --bg-card: #1E293B;
     --bg-sidebar: #111827;
     --text-main: #F1F5F9;
@@ -161,4 +163,31 @@
 .fade-enter-from, .fade-leave-to {
   opacity: 0;
   transform: translateY(4px);
+}
+
+/* Custom Popper Styles for Dark Mode */
+.custom-popper {
+  @apply !bg-[var(--bg-card)] !border-[var(--border)] !rounded-xl !shadow-2xl !p-1 !important;
+}
+
+.custom-popper .el-select-dropdown__item {
+  @apply !text-[var(--text-main)] !rounded-lg !mx-1 !my-0.5 !transition-colors !important;
+}
+
+.custom-popper .el-select-dropdown__item.hover,
+.custom-popper .el-select-dropdown__item:hover {
+  background-color: rgba(var(--bg-main-rgb), 0.8) !important;
+}
+
+.custom-popper .el-select-dropdown__item.selected {
+  @apply !text-[var(--accent)] !font-bold !important;
+  background-color: rgba(var(--accent-rgb, 59, 130, 246), 0.1) !important;
+}
+
+.custom-popper .el-select-group__title {
+  @apply !text-[var(--text-muted)] !text-[10px] !font-bold !uppercase !tracking-widest !py-2 !px-4 !important;
+}
+
+.custom-popper .el-popper__arrow::before {
+  @apply !bg-[var(--bg-card)] !border-[var(--border)] !important;
 }

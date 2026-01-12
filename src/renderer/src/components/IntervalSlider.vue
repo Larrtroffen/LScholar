@@ -18,8 +18,18 @@ const options = [
 ];
 
 const currentIndex = computed(() => {
-  const index = options.findIndex(o => o.value === props.modelValue);
-  return index === -1 ? 1 : index; // Default to 24h if not found
+  // 寻找最接近的值的索引，确保即使传入的值不完全匹配也能正确显示
+  let closestIndex = 0;
+  let minDiff = Math.abs(options[0].value - props.modelValue);
+  
+  for (let i = 1; i < options.length; i++) {
+    const diff = Math.abs(options[i].value - props.modelValue);
+    if (diff < minDiff) {
+      minDiff = diff;
+      closestIndex = i;
+    }
+  }
+  return closestIndex;
 });
 
 const sliderRef = ref<HTMLElement | null>(null);
@@ -46,11 +56,17 @@ const handleMouseUp = () => {
 const updateValue = (clientX: number) => {
   if (!sliderRef.value) return;
   const rect = sliderRef.value.getBoundingClientRect();
-  const x = Math.max(0, Math.min(clientX - rect.left, rect.width));
-  const percentage = x / rect.width;
+  const x = clientX - rect.left;
+  const width = rect.width;
+  
+  // 确保百分比在 0-1 之间
+  let percentage = x / width;
+  percentage = Math.max(0, Math.min(1, percentage));
+  
+  // 计算最接近的索引
   const index = Math.round(percentage * (options.length - 1));
   
-  if (index !== currentIndex.value) {
+  if (index !== currentIndex.value && index >= 0 && index < options.length) {
     emit('update:modelValue', options[index].value);
     emit('change', options[index].value);
   }
@@ -71,7 +87,8 @@ const selectIndex = (index: number) => {
     >
       <!-- Track Fill -->
       <div 
-        class="absolute top-0 left-0 h-full bg-gradient-to-r from-[var(--accent)] to-blue-400 rounded-full transition-all duration-300 ease-out"
+        class="absolute top-0 left-0 h-full bg-gradient-to-r from-[var(--accent)] to-blue-400 rounded-full"
+        :class="{ 'transition-all duration-300 ease-out': !isDragging }"
         :style="{ width: (currentIndex / (options.length - 1)) * 100 + '%' }"
       ></div>
 
@@ -101,7 +118,8 @@ const selectIndex = (index: number) => {
 
       <!-- Handle -->
       <div 
-        class="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-5 h-5 bg-white rounded-full shadow-lg border-2 border-[var(--accent)] cursor-grab active:cursor-grabbing transition-all duration-300 ease-out z-10 flex items-center justify-center"
+        class="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-5 h-5 bg-white rounded-full shadow-lg border-2 border-[var(--accent)] cursor-grab active:cursor-grabbing z-10 flex items-center justify-center"
+        :class="{ 'transition-all duration-300 ease-out': !isDragging }"
         :style="{ left: (currentIndex / (options.length - 1)) * 100 + '%' }"
       >
         <div class="w-1.5 h-1.5 bg-[var(--accent)] rounded-full animate-pulse"></div>

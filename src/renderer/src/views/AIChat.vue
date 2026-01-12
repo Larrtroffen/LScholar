@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, nextTick, onMounted, toRaw } from 'vue';
-import { useMainStore } from '../store';
+import { ref, nextTick, onMounted, toRaw, computed } from 'vue';
+import { useDataStore } from '../store/data';
+import MarkdownIt from 'markdown-it';
 import { 
   Send, 
   Bot, 
@@ -22,7 +23,13 @@ import {
 } from 'lucide-vue-next';
 import { ElMessage } from 'element-plus';
 
-const store = useMainStore();
+const store = useDataStore();
+const md = new MarkdownIt({
+  html: true,
+  linkify: true,
+  typographer: true
+});
+
 const question = ref('');
 const loading = ref(false);
 const currentChatId = ref<number | null>(null);
@@ -205,7 +212,7 @@ const copyToClipboard = (text: string, index: number) => {
                 ? 'bg-[var(--accent)] text-white rounded-tr-none' 
                 : 'bg-[var(--bg-card)] text-[var(--text-main)] rounded-tl-none'"
             >
-              <div class="whitespace-pre-wrap text-sm font-medium">{{ msg.content }}</div>
+              <div class="markdown-body text-sm font-medium" v-html="md.render(msg.content)"></div>
               
               <div 
                 v-if="!msg.isError"
@@ -271,5 +278,53 @@ const copyToClipboard = (text: string, index: number) => {
 }
 .custom-scrollbar::-webkit-scrollbar-thumb {
   @apply bg-[var(--border)] rounded-full;
+}
+
+.markdown-body {
+  @apply leading-relaxed;
+}
+.markdown-body :deep(p) {
+  @apply mb-4 last:mb-0;
+}
+.markdown-body :deep(h1), .markdown-body :deep(h2), .markdown-body :deep(h3) {
+  @apply font-bold mb-4 mt-6 first:mt-0;
+}
+.markdown-body :deep(h1) { @apply text-xl; }
+.markdown-body :deep(h2) { @apply text-lg; }
+.markdown-body :deep(h3) { @apply text-base; }
+.markdown-body :deep(ul), .markdown-body :deep(ol) {
+  @apply mb-4 pl-6;
+}
+.markdown-body :deep(ul) { @apply list-disc; }
+.markdown-body :deep(ol) { @apply list-decimal; }
+.markdown-body :deep(li) { @apply mb-1; }
+.markdown-body :deep(code) {
+  @apply px-1.5 py-0.5 rounded bg-black/10 font-mono text-[0.9em];
+}
+.markdown-body :deep(pre) {
+  @apply p-4 rounded-xl bg-black/20 overflow-x-auto mb-4;
+}
+.markdown-body :deep(pre code) {
+  @apply p-0 bg-transparent;
+}
+.markdown-body :deep(blockquote) {
+  @apply border-l-4 border-[var(--border)] pl-4 italic my-4;
+}
+.markdown-body :deep(table) {
+  @apply w-full border-collapse mb-4;
+}
+.markdown-body :deep(th), .markdown-body :deep(td) {
+  @apply border border-[var(--border)] p-2 text-left;
+}
+.markdown-body :deep(th) {
+  @apply bg-black/5;
+}
+
+/* User message specific markdown styles */
+.flex-row-reverse .markdown-body :deep(code) {
+  @apply bg-white/20;
+}
+.flex-row-reverse .markdown-body :deep(pre) {
+  @apply bg-white/10;
 }
 </style>

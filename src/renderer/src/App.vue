@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
-import { useMainStore } from './store';
+import { ref, onMounted, onUnmounted } from 'vue';
+import { useConfigStore } from './store/config';
+import { useDataStore } from './store/data';
 import { 
   LayoutDashboard, 
   Rss, 
@@ -13,7 +14,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Sun,
-  Moon
+  Moon,
+  BookOpenCheck,
+  Database
 } from 'lucide-vue-next';
 import Dashboard from './views/Dashboard.vue';
 import Feeds from './views/Feeds.vue';
@@ -21,31 +24,51 @@ import AIChat from './views/AIChat.vue';
 import Insights from './views/Insights.vue';
 import Favorites from './views/Favorites.vue';
 import Settings from './views/Settings.vue';
+import SmartExtraction from './views/SmartExtraction.vue';
+import EmbeddingManager from './views/EmbeddingManager.vue';
 
-const store = useMainStore();
-const currentView = ref('dashboard');
+const configStore = useConfigStore();
+const dataStore = useDataStore();
 const initError = ref<string | null>(null);
 const isSidebarCollapsed = ref(false);
+const windowWidth = ref(window.innerWidth);
+
+const handleResize = () => {
+  windowWidth.value = window.innerWidth;
+  if (windowWidth.value < 1100) {
+    isSidebarCollapsed.value = true;
+  } else {
+    isSidebarCollapsed.value = false;
+  }
+};
 
 const menuItems = [
   { id: 'dashboard', name: '仪表盘', icon: LayoutDashboard },
   { id: 'feeds', name: '订阅源', icon: Rss },
   { id: 'aichat', name: 'AI问答', icon: MessageSquare },
   { id: 'insights', name: '每日洞察', icon: Calendar },
+  { id: 'extraction', name: '专题洞察', icon: BookOpenCheck },
   { id: 'favorites', name: '我的收藏', icon: Star },
+  { id: 'embedding', name: '嵌入管理', icon: Database },
   { id: 'settings', name: '设置', icon: SettingsIcon },
 ];
 
 onMounted(async () => {
-  store.initTheme();
+  window.addEventListener('resize', handleResize);
+  handleResize(); // 初始化检查
+
   if (!(window as any).electron) {
     initError.value = 'Electron API not found. Preload script might have failed to load.';
     return;
   }
+  
+  // 初始化事件监听器
+  configStore.initEventListeners();
+  
   try {
-    await store.fetchSettings();
-    await store.fetchFeeds();
-    await store.fetchGroups();
+    await configStore.fetchSettings();
+    await dataStore.fetchFeeds();
+    // await dataStore.fetchGroups(); // Not implemented yet
   } catch (error: any) {
     console.error('Failed to fetch initial data:', error);
     initError.value = `Failed to fetch initial data: ${error.message}`;
@@ -53,10 +76,14 @@ onMounted(async () => {
 });
 
 const reload = () => window.location.reload();
+
+onUnmounted(() => {
+  window.removeEventListener('resize', handleResize);
+});
 </script>
 
 <template>
-  <div class="flex h-screen w-screen overflow-hidden bg-[var(--bg-main)] text-[var(--text-main)] selection:bg-blue-500/30">
+  <div class="flex h-screen w-screen overflow-hidden bg-[var(--bg-main)] text-[var(--text-main)] selection:bg-blue-500/30 min-w-[1000px]">
     <!-- Sidebar -->
     <aside 
       class="flex flex-col bg-[var(--bg-sidebar)] border-r border-[var(--border)] transition-all duration-300 ease-in-out z-50 shrink-0 relative"
@@ -81,14 +108,14 @@ const reload = () => window.location.reload();
         <button 
           v-for="item in menuItems" 
           :key="item.id"
-          @click="currentView = item.id"
+          @click="configStore.currentView = item.id"
           class="w-full flex items-center p-2.5 rounded-xl transition-all duration-200 group relative overflow-hidden"
-          :class="currentView === item.id 
+          :class="configStore.currentView === item.id 
             ? 'bg-blue-500/10 text-blue-500' 
             : 'text-[var(--text-muted)] hover:bg-[var(--bg-main)] hover:text-[var(--text-main)]'"
         >
           <div class="relative z-10 flex items-center">
-            <component :is="item.icon" :size="20" :stroke-width="currentView === item.id ? 2.5 : 2" />
+            <component :is="item.icon" :size="20" :stroke-width="configStore.currentView === item.id ? 2.5 : 2" />
             <span 
               class="ml-3 font-semibold text-sm transition-all duration-300 whitespace-nowrap overflow-hidden"
               :class="isSidebarCollapsed ? 'opacity-0 w-0' : 'opacity-100 w-auto'"
@@ -98,7 +125,7 @@ const reload = () => window.location.reload();
           </div>
           
           <div 
-            v-if="currentView === item.id" 
+            v-if="configStore.currentView === item.id" 
             class="absolute left-0 top-0 bottom-0 w-1 bg-blue-500 rounded-r-full"
           ></div>
 
@@ -114,12 +141,12 @@ const reload = () => window.location.reload();
       <!-- Sidebar Footer -->
       <div class="p-3 border-t border-[var(--border)] shrink-0 space-y-1">
         <button 
-          @click="store.toggleTheme()"
+          @click="configStore.toggleTheme()"
           class="w-full flex items-center p-2.5 rounded-xl text-[var(--text-muted)] hover:bg-[var(--bg-main)] hover:text-[var(--text-main)] transition-all"
         >
-          <Sun v-if="store.theme === 'dark'" :size="20" />
+          <Sun v-if="configStore.settings.theme === 'dark'" :size="20" />
           <Moon v-else :size="20" />
-          <span class="ml-3 font-semibold text-sm transition-all duration-300 overflow-hidden whitespace-nowrap" :class="isSidebarCollapsed ? 'opacity-0 w-0' : 'opacity-100 w-auto'">{{ store.theme === 'dark' ? '浅色模式' : '深色模式' }}</span>
+          <span class="ml-3 font-semibold text-sm transition-all duration-300 overflow-hidden whitespace-nowrap" :class="isSidebarCollapsed ? 'opacity-0 w-0' : 'opacity-100 w-auto'">{{ configStore.settings.theme === 'dark' ? '浅色模式' : '深色模式' }}</span>
         </button>
         <button 
           @click="isSidebarCollapsed = !isSidebarCollapsed"
@@ -161,9 +188,11 @@ const reload = () => window.location.reload();
             feeds: Feeds,
             aichat: AIChat,
             insights: Insights,
+            extraction: SmartExtraction,
             favorites: Favorites,
+            embedding: EmbeddingManager,
             settings: Settings
-          }[currentView]" />
+          }[configStore.currentView]" />
         </Transition>
       </div>
     </main>

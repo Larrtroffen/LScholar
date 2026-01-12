@@ -4,28 +4,22 @@ import {
   Sparkles, 
   TrendingUp, 
   Calendar as CalendarIcon, 
-  BookOpen,
   ArrowUpRight,
   Lightbulb,
-  Zap,
   BrainCircuit,
   Inbox,
-  RefreshCw,
-  Settings2,
-  UserCircle,
-  Save,
-  ChevronDown,
-  ChevronUp
+  RefreshCw
 } from 'lucide-vue-next';
 import { ElMessage } from 'element-plus';
-import { useMainStore } from '../store';
+import { useDataStore } from '../store/data';
+import { useConfigStore } from '../store/config';
+import ResearchPreferences from '../components/ResearchPreferences.vue';
 
-const store = useMainStore();
+const store = useDataStore();
+const configStore = useConfigStore();
 const selectedDate = ref(new Date());
 const loading = ref(false);
 const rerunning = ref(false);
-const savingPreferences = ref(false);
-const showPreferences = ref(true);
 const insightData = ref<any>(null);
 const recommendationCount = ref(10);
 
@@ -72,28 +66,8 @@ const rerunInsights = async () => {
   }
 };
 
-const savePreferences = async () => {
-  savingPreferences.value = true;
-  try {
-    await (window as any).electron.ipcRenderer.invoke('save-settings', { ...store.settings });
-    ElMessage.success('研究偏好已保存');
-  } catch (error: any) {
-    ElMessage.error(`保存失败: ${error.message}`);
-  } finally {
-    savingPreferences.value = false;
-  }
-};
-
-const openExternal = (url: string) => {
-  if (url && url.startsWith('http')) {
-    (window as any).electron.shell.openExternal(url);
-  } else {
-    ElMessage.warning('无效的链接地址');
-  }
-};
-
 onMounted(async () => {
-  await store.fetchSettings();
+  await configStore.fetchSettings();
   fetchInsights();
 });
 </script>
@@ -118,61 +92,22 @@ onMounted(async () => {
       </header>
 
       <!-- Research Preferences Section -->
-      <section class="mb-8 bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl overflow-hidden shadow-sm">
-        <div 
-          @click="showPreferences = !showPreferences"
-          class="p-4 px-6 flex items-center justify-between cursor-pointer hover:bg-[var(--bg-main)]/50 transition-colors"
-        >
-          <div class="flex items-center gap-3">
-            <UserCircle :size="18" class="text-[var(--accent)]" />
-            <h2 class="text-sm font-bold text-[var(--text-main)] uppercase tracking-widest">研究偏好与配置</h2>
+      <ResearchPreferences :show-save-button="true">
+        <template #extra-settings>
+          <label class="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest ml-1">推荐文章数量 (10 - 50)</label>
+          <div class="flex items-center gap-6 bg-[var(--bg-card)] p-4 rounded-xl border border-[var(--border)]">
+            <el-slider 
+              v-model="recommendationCount" 
+              :min="10" 
+              :max="50" 
+              :step="5"
+              class="flex-1"
+            />
+            <span class="text-lg font-mono font-bold text-[var(--accent)] w-8 text-right">{{ recommendationCount }}</span>
           </div>
-          <component :is="showPreferences ? ChevronUp : ChevronDown" :size="18" class="text-[var(--text-muted)]" />
-        </div>
-        
-        <Transition name="fade">
-          <div v-if="showPreferences" class="p-6 pt-2 border-t border-[var(--border)] bg-[var(--bg-main)]/20">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <div class="space-y-3">
-                <div class="flex justify-between items-center">
-                  <label class="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest ml-1">关键词 (AI 将优先关注这些领域)</label>
-                  <el-button 
-                    @click="savePreferences" 
-                    :loading="savingPreferences"
-                    type="primary" 
-                    link
-                    class="!text-[10px] !font-bold uppercase tracking-widest"
-                  >
-                    <Save :size="12" class="mr-1" /> 保存偏好
-                  </el-button>
-                </div>
-                <el-input 
-                  v-model="store.settings.user_preferences" 
-                  type="textarea" 
-                  :rows="3" 
-                  placeholder="例如：Deep Learning, NLP, Robotics..." 
-                  class="custom-textarea"
-                />
-              </div>
-              
-              <div class="space-y-4">
-                <label class="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest ml-1">推荐文章数量 (10 - 50)</label>
-                <div class="flex items-center gap-6 bg-[var(--bg-card)] p-4 rounded-xl border border-[var(--border)]">
-                  <el-slider 
-                    v-model="recommendationCount" 
-                    :min="10" 
-                    :max="50" 
-                    :step="5"
-                    class="flex-1"
-                  />
-                  <span class="text-lg font-mono font-bold text-[var(--accent)] w-8 text-right">{{ recommendationCount }}</span>
-                </div>
-                <p class="text-[9px] text-[var(--text-muted)] italic ml-1">* 增加数量会消耗更多 Token 并延长生成时间</p>
-              </div>
-            </div>
-          </div>
-        </Transition>
-      </section>
+          <p class="text-[9px] text-[var(--text-muted)] italic ml-1">* 增加数量会消耗更多 Token 并延长生成时间</p>
+        </template>
+      </ResearchPreferences>
 
       <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
         <!-- Calendar Column -->
@@ -228,7 +163,7 @@ onMounted(async () => {
                 <div 
                   v-for="(item, index) in insightData.recommendations" 
                   :key="index"
-                  @click="openExternal(item.url)"
+                  @click="store.jumpToArticle(item)"
                   class="bg-[var(--bg-card)] p-6 rounded-2xl border border-[var(--border)] hover:border-[var(--accent)]/50 transition-all flex justify-between items-center group cursor-pointer shadow-sm"
                 >
                   <div class="flex-1 pr-8">
@@ -242,9 +177,12 @@ onMounted(async () => {
                       <span class="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest">{{ item.journal }}</span>
                       <span class="text-[10px] font-bold text-[var(--accent)] uppercase tracking-widest">匹配度 {{ (item.score * 100).toFixed(0) }}%</span>
                     </div>
-                    <h3 class="text-base font-bold text-[var(--text-main)] group-hover:text-[var(--accent)] transition-colors leading-snug">{{ item.title }}</h3>
+                    <h3 class="text-base font-bold text-[var(--text-main)] group-hover:text-[var(--accent)] transition-colors leading-snug mb-2">{{ item.title }}</h3>
+                    <p v-if="item.abstract" class="text-xs text-[var(--text-muted)] line-clamp-2 leading-relaxed italic opacity-80">
+                      {{ item.abstract }}
+                    </p>
                   </div>
-                  <div class="w-10 h-10 bg-[var(--bg-main)] rounded-xl flex items-center justify-center text-[var(--text-muted)] group-hover:bg-[var(--accent)] group-hover:text-white transition-all shadow-inner">
+                  <div class="w-10 h-10 bg-[var(--bg-main)] rounded-xl flex items-center justify-center text-[var(--text-muted)] group-hover:bg-[var(--accent)] group-hover:text-white transition-all shadow-inner shrink-0">
                     <ArrowUpRight :size="20" />
                   </div>
                 </div>
@@ -255,7 +193,15 @@ onMounted(async () => {
           <div v-else class="flex flex-col items-center justify-center h-96 text-[var(--text-muted)] bg-[var(--bg-card)] rounded-3xl border border-[var(--border)] border-dashed">
             <Inbox :size="48" class="mb-4 opacity-10" />
             <h3 class="text-base font-bold uppercase tracking-widest">暂无洞察数据</h3>
-            <p class="text-xs mt-2">该日期没有新增文献或尚未生成 AI 总结</p>
+            <p class="text-xs mt-2 mb-6">该日期没有新增文献或尚未生成 AI 总结</p>
+            <el-button 
+              @click="rerunInsights" 
+              :loading="rerunning"
+              type="primary"
+              class="!rounded-xl !px-8 !h-11 !font-bold shadow-lg shadow-blue-500/20"
+            >
+              <Sparkles :size="18" class="mr-2" /> 立即生成今日洞察
+            </el-button>
           </div>
         </div>
       </div>

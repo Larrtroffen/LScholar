@@ -5,6 +5,7 @@ release
 *.db
 *.log
 lancedb
+.cache
 .dev-data
 .vscode
 .DS_Store

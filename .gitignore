@@ -9,3 +9,4 @@ lancedb
 .dev-data
 .vscode
 .DS_Store
+*.jar

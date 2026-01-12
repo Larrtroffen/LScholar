@@ -71,6 +71,13 @@
       ],
       "artifactName": "${productName}-${version}-${arch}.${ext}"
     },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "snap": null
+    },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,

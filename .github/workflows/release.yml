@@ -31,7 +31,7 @@ jobs:
         run: pnpm build
         
       - name: Build for Linux
-        run: pnpm electron:build --linux --dir
+        run: pnpm electron:build --linux
         
       - name: Build for Windows
         run: pnpm electron:build --win

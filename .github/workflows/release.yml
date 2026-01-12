@@ -6,7 +6,7 @@ on:
       - 'v*'
 
 jobs:
-  build:
+  build-linux:
     runs-on: ubuntu-22.04
 
     steps:
@@ -33,24 +33,99 @@ jobs:
       - name: Build for Linux
         run: pnpm electron:build --linux --publish never
 
-      - name: Build for Windows
-        run: pnpm electron:build --win --publish never
-
-      - name: Upload all artifacts
+      - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: release-files
+          name: linux-release
           path: release/
 
-  release:
-    needs: build
+  build-mac:
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build vite
+        run: pnpm vite build
+
+      - name: Build for macOS
+        run: pnpm electron:build --mac --publish never
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-release
+          path: release/
+
+  build-win:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Download artifacts
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build vite
+        run: pnpm vite build
+
+      - name: Build for Windows
+        run: pnpm electron:build --win --publish never
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: win-release
+          path: release/
+
+  release:
+    needs: [build-linux, build-mac, build-win]
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Download Linux artifacts
         uses: actions/download-artifact@v4
         with:
-          name: release-files
+          name: linux-release
+          path: release/
+
+      - name: Download macOS artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: mac-release
+          path: release/
+
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: win-release
           path: release/
 
       - name: Create Release

@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { Article, RSSFeed, FeedGroup } from '../../../shared/types';
+import { useConfigStore } from './config';
 
 export const useDataStore = defineStore('data', {
   state: () => ({
@@ -11,7 +12,7 @@ export const useDataStore = defineStore('data', {
     isLoading: false,
     translatingIds: [] as number[],
     isUpdatingAll: false,
-    updateProgress: { current: 0, total: 0 },
+    updateProgress: { current: 0, total: 0, percent: 0, message: '' },
     updatingFeedIds: [] as number[],
     chatHistory: [] as any[],
     topicInsights: [] as any[]
@@ -29,8 +30,32 @@ export const useDataStore = defineStore('data', {
     async fetchTopicInsights() {
       this.topicInsights = await (window as any).electron.ipcRenderer.invoke('get-topic-insights');
     },
-    jumpToArticle(item: any) {
+    async jumpToArticle(item: any) {
+      const configStore = useConfigStore();
+      
+      // 优先通过 URL 查找本地文章
+      let foundArticle: Article | null = null;
       if (item.url) {
+        const article = await (window as any).electron.ipcRenderer.invoke('article:find-by-url', item.url);
+        if (article) {
+          foundArticle = article;
+        }
+      }
+      
+      // 如果通过 URL 找不到，尝试通过标题查找
+      if (!foundArticle && item.title) {
+        const articles = await this.searchArticles(item.title);
+        if (articles.length > 0) {
+          foundArticle = articles[0];
+        }
+      }
+      
+      if (foundArticle) {
+        // 切换到 Dashboard 视图并选中文章
+        configStore.navigateTo('dashboard');
+        this.selectArticle(foundArticle);
+      } else if (item.url) {
+        // 如果都找不到且有 URL，则打开外部浏览器
         window.open(item.url, '_blank');
       } else {
         console.warn('Article has no URL:', item);
@@ -68,7 +93,7 @@ export const useDataStore = defineStore('data', {
     async generateScript(url: string) {
       return await (window as any).electron.ipcRenderer.invoke('source:generate-script', url);
     },
-    async fetchArticles(limit = 100, offset = 0) {
+    async fetchArticles(limit = 10000, offset = 0) {
       this.isLoading = true;
       try {
         this.articles = await (window as any).electron.ipcRenderer.invoke('article:get-all', limit, offset);
@@ -76,10 +101,12 @@ export const useDataStore = defineStore('data', {
         this.isLoading = false;
       }
     },
-    async searchArticles(query: string) {
+    async searchArticles(query: string): Promise<Article[]> {
       this.isLoading = true;
       try {
-        this.articles = await (window as any).electron.ipcRenderer.invoke('article:search', query);
+        const results = await (window as any).electron.ipcRenderer.invoke('article:search', query);
+        this.articles = results;
+        return results;
       } finally {
         this.isLoading = false;
       }
@@ -101,13 +128,12 @@ export const useDataStore = defineStore('data', {
         const result = await (window as any).electron.ipcRenderer.invoke('article:translate', id);
         const article = this.articles.find(a => a.id === id);
         if (article) {
-          // We need to extend Article type or use any for now if types are not updated
-          (article as any).trans_title = result.trans_title;
-          (article as any).trans_abstract = result.trans_abstract;
+          article.trans_title = result.trans_title;
+          article.trans_abstract = result.trans_abstract;
         }
         if (this.selectedArticle && this.selectedArticle.id === id) {
-          (this.selectedArticle as any).trans_title = result.trans_title;
-          (this.selectedArticle as any).trans_abstract = result.trans_abstract;
+          this.selectedArticle.trans_title = result.trans_title;
+          this.selectedArticle.trans_abstract = result.trans_abstract;
         }
       } finally {
         this.translatingIds = this.translatingIds.filter(tid => tid !== id);

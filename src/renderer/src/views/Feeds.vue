@@ -18,7 +18,8 @@ import {
   Activity,
   Terminal,
   RefreshCw,
-  Clock
+  Clock,
+  BookOpen
 } from 'lucide-vue-next';
 
 const store = useDataStore();
@@ -26,12 +27,46 @@ const showAddModal = ref(false);
 const isEditing = ref(false);
 const adding = ref(false);
 const updatingAll = ref(false);
-const updateProgress = ref({ current: 0, total: 0, percent: 0 });
+const updateProgress = ref({ current: 0, total: 0, percent: 0, message: '' });
 const generatingScript = ref(false);
 const debugging = ref(false);
 const debugResult = ref<any>(null);
+const showContentSnippet = ref(false);
 
-const defaultScript = `function parse(rssText) {\n  // 使用 DOMParser 解析 XML\n  const parser = new DOMParser();\n  const xmlDoc = parser.parseFromString(rssText, "text/xml");\n  const items = xmlDoc.querySelectorAll("item, entry");\n  \n  return Array.from(items).map(item => {\n    // 兼容 RSS 和 Atom 格式\n    const title = item.querySelector("title")?.textContent || "";\n    const authors = Array.from(item.querySelectorAll("author name, author, dc\\\\:creator")).map(a => a.textContent);\n    const abstract = item.querySelector("description, summary, content")?.textContent || "";\n    const url = item.querySelector("link")?.getAttribute("href") || item.querySelector("link")?.textContent || "";\n    const date = item.querySelector("pubDate, updated, published")?.textContent || "";\n    \n    return {\n      title: title.trim(),\n      authors: authors.length > 0 ? authors : ["Unknown"],\n      abstract: abstract.trim(),\n      url: url.trim(),\n      publication_date: date.trim()\n    };\n  });\n}`;
+const defaultScript = `// 解析脚本：输入变量为 content (RSS/XML 字符串)
+// 返回对象数组，字段: title, url, content, summary, publish_date, author
+
+// 使用正则表达式解析 XML (Node.js 环境无 DOMParser)
+const items = [];
+const itemRegex = /<item[^>]*>([\\s\\S]*?)<\\/item>|<entry[^>]*>([\\s\\S]*?)<\\/entry>/gi;
+let match;
+
+while ((match = itemRegex.exec(content)) !== null) {
+  const itemContent = match[1] || match[2];
+  
+  const getTagContent = (tag) => {
+    const regex = new RegExp('<' + tag + '[^>]*>([\\\\s\\\\S]*?)<\\\\/' + tag + '>', 'i');
+    const m = itemContent.match(regex);
+    return m ? m[1].replace(/<!\\\\[CDATA\\\\[|\\\\]\\\\]>/g, '').trim() : '';
+  };
+  
+  const getLinkHref = () => {
+    const hrefMatch = itemContent.match(/<link[^>]*href=["']([^"']+)["']/i);
+    if (hrefMatch) return hrefMatch[1];
+    return getTagContent('link');
+  };
+  
+  items.push({
+    title: getTagContent('title'),
+    url: getLinkHref(),
+    content: getTagContent('content') || getTagContent('content:encoded'),
+    summary: getTagContent('description') || getTagContent('summary'),
+    publish_date: getTagContent('pubDate') || getTagContent('published') || getTagContent('updated'),
+    author: getTagContent('author') || getTagContent('dc:creator')
+  });
+}
+
+return items;`;
 
 const intervalOptions = [
   { label: '12小时', value: 12, cron: '0 */12 * * *' },
@@ -56,6 +91,7 @@ const newFeed = ref({
 
 onMounted(() => {
   store.fetchFeeds();
+  store.fetchGroups();
 });
 
 const openAddModal = () => {
@@ -106,17 +142,25 @@ const debugScript = async () => {
   if (!newFeed.value.url) return ElMessage.warning('请先输入 RSS URL');
   debugging.value = true;
   debugResult.value = null;
+  showContentSnippet.value = false;
   try {
     const result = await (window as any).electron.ipcRenderer.invoke('debug-rss', {
       url: newFeed.value.url,
       script: newFeed.value.parsing_script
     });
     if (result.success) {
-      debugResult.value = result.firstArticle;
-      if (!debugResult.value) {
+      // 保存完整结果用于展示
+      debugResult.value = {
+        totalArticles: result.totalArticles,
+        firstArticle: result.firstArticle,
+        articlesList: result.articlesList,
+        fieldAnalysis: result.fieldAnalysis,
+        contentSnippet: result.contentSnippet
+      };
+      if (!result.firstArticle) {
         ElMessage.warning('解析成功，但未找到任何文章。');
       } else {
-        ElMessage.success('解析成功，已显示第一篇文章预览。');
+        ElMessage.success(`解析成功，共 ${result.totalArticles} 篇文章`);
       }
     } else {
       ElMessage.error(`调试失败: ${result.error}`);
@@ -132,54 +176,7 @@ const generateScript = async () => {
   if (!newFeed.value.url) return ElMessage.warning('请先输入 RSS URL');
   generatingScript.value = true;
   try {
-    const rssResult = await (window as any).electron.ipcRenderer.invoke('fetch-raw-rss', newFeed.value.url);
-    if (!rssResult.success) {
-      throw new Error(`无法获取 RSS 内容: ${rssResult.error}`);
-    }
-
-    const rssSnippet = rssResult.data.slice(0, 3000);
-    const prompt = `你是一个专业的 RSS 解析专家。请分析以下 RSS 内容的结构，并编写一个 JavaScript 解析函数 'parse(rssText)'。
-
-要求：
-1. 我们的沙箱环境已内置 'cheerio' 库，你可以直接使用 'cheerio.load(rssText, { xmlMode: true })' 来解析。
-2. 必须返回一个对象数组。
-3. 每个对象必须包含以下字段：
-   - title: 文章标题
-   - authors: 作者姓名数组 (例如 ["Author A", "Author B"])
-   - abstract: 摘要或内容简介
-   - url: 文章原文链接
-   - publication_date: 发布日期字符串 (请尽量转换为 YYYY-MM-DD)
-4. 针对学术 RSS（如知网 CNKI、arXiv），请特别注意提取 'author'、'dc:creator' 或 'dc:author' 标签。
-5. 针对摘要，请优先提取 'description'、'summary' 或 'content:encoded'。
-6. 针对知网格式，作者可能在 <author> 标签中，且带有分号，请注意清洗。
-7. 针对 Atom 格式，请注意从 <link rel="alternate" href="..."/> 标签的 href 属性中提取 URL。
-
-代码示例参考：
-\`\`\`javascript
-function parse(rssText) {
-  const $ = cheerio.load(rssText, { xmlMode: true });
-  return $('item, entry').map((i, el) => {
-    const $el = $(el);
-    return {
-      title: $el.find('title').text().trim(),
-      authors: $el.find('author, dc\\\\:creator').map((i, a) => $(a).text().replace(/;/g, '').trim()).get(),
-      abstract: $el.find('description, summary').text().trim(),
-      url: $el.find('link').attr('href') || $el.find('link').text().trim(),
-      publication_date: $el.find('pubDate, updated').text().trim()
-    };
-  }).get();
-}
-\`\`\`
-
-RSS 内容参考：
-${rssSnippet}
-
-请只返回代码块，不要有任何解释。`;
-
-    const script = await (window as any).electron.ipcRenderer.invoke('general-ai', { 
-      prompt,
-      systemRole: "你是一个专业的 RSS 解析脚本生成专家。请只返回 JavaScript 代码块，确保代码在沙箱环境中可用。"
-    });
+    const script = await (window as any).electron.ipcRenderer.invoke('source:generate-script', newFeed.value.url);
     const codeMatch = script.match(/```javascript([\s\S]*?)```/) || script.match(/```js([\s\S]*?)```/);
     newFeed.value.parsing_script = codeMatch ? codeMatch[1].trim() : script;
     ElMessage.success('脚本已根据 RSS 格式智能生成');
@@ -195,10 +192,10 @@ const saveFeed = async () => {
   adding.value = true;
   try {
     if (isEditing.value) {
-      await (window as any).electron.ipcRenderer.invoke('update-feed', toRaw(newFeed.value));
+      await (window as any).electron.ipcRenderer.invoke('source:update', newFeed.value.id, toRaw(newFeed.value));
       ElMessage.success('订阅源已更新');
     } else {
-      await (window as any).electron.ipcRenderer.invoke('add-feed', toRaw(newFeed.value));
+      await (window as any).electron.ipcRenderer.invoke('source:add', toRaw(newFeed.value));
       ElMessage.success('订阅源已成功添加');
     }
     await store.fetchFeeds();
@@ -235,7 +232,7 @@ const deleteFeed = async (id: number) => {
       cancelButtonText: '取消',
       type: 'warning',
     });
-    await (window as any).electron.ipcRenderer.invoke('delete-feed', id);
+    await (window as any).electron.ipcRenderer.invoke('source:delete', id);
     await store.fetchFeeds();
     ElMessage.success('已删除');
   } catch {}
@@ -339,12 +336,12 @@ const getHostname = (url: string) => {
               <Settings :size="14" class="mr-2" /> 配置
             </el-button>
             <el-button 
-              @click.stop="updateSingleFeed(feed.id)"
+              @click.stop="updateSingleFeed(feed.id!)"
               class="!w-9 !h-9 !bg-[var(--bg-main)] !text-[var(--text-main)] !border-none hover:!text-[var(--accent)] !p-0"
             >
-              <RefreshCw :size="14" :class="store.updatingFeedIds.includes(feed.id) ? 'animate-spin' : ''" />
+              <RefreshCw :size="14" :class="store.updatingFeedIds.includes(feed.id!) ? 'animate-spin' : ''" />
             </el-button>
-            <el-button @click="deleteFeed(feed.id)" class="!w-9 !h-9 !bg-red-500/10 !text-red-500 !border-none hover:!bg-red-500 hover:!text-white !p-0">
+            <el-button @click="deleteFeed(feed.id!)" class="!w-9 !h-9 !bg-red-500/10 !text-red-500 !border-none hover:!bg-red-500 hover:!text-white !p-0">
               <Trash2 :size="14" />
             </el-button>
           </div>
@@ -417,22 +414,68 @@ const getHostname = (url: string) => {
         </div>
 
         <!-- Debug Result Preview -->
-        <div v-if="debugResult" class="bg-[var(--bg-main)] border border-[var(--border)] rounded-xl p-5 space-y-3 animate-in fade-in slide-in-from-top-2">
-          <div class="flex items-center justify-between mb-2">
+        <div v-if="debugResult" class="bg-[var(--bg-main)] border border-[var(--border)] rounded-xl p-5 space-y-4 animate-in fade-in slide-in-from-top-2">
+          <div class="flex items-center justify-between">
             <h4 class="text-[10px] font-bold text-[var(--accent)] uppercase tracking-widest flex items-center gap-2">
-              <Play :size="12" /> 抓取预览 (第一篇文章)
+              <Play :size="12" /> 调试结果
             </h4>
             <button @click="debugResult = null" class="text-[var(--text-muted)] hover:text-[var(--text-main)]">
               <Plus :size="14" class="rotate-45" />
             </button>
           </div>
-          <div class="space-y-2">
-            <p class="text-sm font-bold text-[var(--text-main)]">{{ debugResult.title }}</p>
-            <p class="text-[10px] text-[var(--text-muted)] font-medium">作者: {{ Array.isArray(debugResult.authors) ? debugResult.authors.join(', ') : debugResult.authors }}</p>
-            <p class="text-[10px] text-[var(--text-muted)] line-clamp-2 italic">{{ debugResult.abstract }}</p>
-            <div class="flex items-center gap-4 text-[9px] font-bold text-[var(--accent)] uppercase">
-              <span>日期: {{ debugResult.publication_date }}</span>
-              <span class="truncate flex-1">链接: {{ debugResult.url }}</span>
+          
+          <!-- 统计信息 -->
+          <div class="flex gap-4 text-xs">
+            <div class="bg-[var(--bg-card)] px-3 py-1.5 rounded-lg border border-[var(--border)]">
+              <span class="text-[var(--text-muted)]">解析文章数: </span>
+              <span class="font-bold text-[var(--accent)]">{{ debugResult.totalArticles || 0 }}</span>
+            </div>
+            <div class="bg-[var(--bg-card)] px-3 py-1.5 rounded-lg border border-[var(--border)]">
+              <span class="text-[var(--text-muted)]">第一条标题: </span>
+              <span class="font-bold text-[var(--text-main)]">{{ debugResult.firstArticle?.title?.substring(0, 30) || '-' }}...</span>
+            </div>
+          </div>
+
+          <!-- 字段分析表格 -->
+          <div v-if="debugResult.fieldAnalysis" class="bg-[var(--bg-card)] rounded-xl border border-[var(--border)] overflow-hidden">
+            <div class="px-4 py-2 bg-[var(--bg-main)] border-b border-[var(--border)]">
+              <h5 class="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest">字段分析</h5>
+            </div>
+            <div class="p-4 space-y-2">
+              <div v-for="(analysis, field) in debugResult.fieldAnalysis" :key="field" class="flex items-start gap-3">
+                <span class="text-[10px] font-bold text-[var(--accent)] uppercase tracking-widest w-24 shrink-0">{{ field }}:</span>
+                <span class="text-xs text-[var(--text-main)] font-mono">{{ analysis }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 文章列表 -->
+          <div v-if="debugResult.articlesList && debugResult.articlesList.length > 0" class="bg-[var(--bg-card)] rounded-xl border border-[var(--border)] overflow-hidden">
+            <div class="px-4 py-2 bg-[var(--bg-main)] border-b border-[var(--border)] flex justify-between items-center">
+              <h5 class="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest">文章列表 (前10条)</h5>
+            </div>
+            <div class="max-h-48 overflow-y-auto">
+              <div v-for="(article, idx) in debugResult.articlesList" :key="idx" class="px-4 py-2 border-b border-[var(--border)] last:border-0 hover:bg-[var(--bg-main)]/50">
+                <p class="text-xs font-bold text-[var(--text-main)] truncate">{{ (idx as number) + 1 }}. {{ article.title }}</p>
+                <div class="flex items-center gap-4 mt-1 text-[9px] text-[var(--text-muted)]">
+                  <span>{{ article.author }}</span>
+                  <span>{{ article.publish_date }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 原始内容片段 -->
+          <div class="bg-[var(--bg-card)] rounded-xl border border-[var(--border)] overflow-hidden">
+            <button 
+              @click="showContentSnippet = !showContentSnippet"
+              class="w-full px-4 py-2 bg-[var(--bg-main)] border-b border-[var(--border)] flex justify-between items-center hover:bg-[var(--bg-main)]/80 transition-colors"
+            >
+              <h5 class="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest">原始内容片段</h5>
+              <span class="text-[10px] text-[var(--accent)]">{{ showContentSnippet ? '收起' : '展开' }}</span>
+            </button>
+            <div v-if="showContentSnippet" class="p-4">
+              <pre class="text-[9px] text-[var(--text-muted)] font-mono whitespace-pre-wrap break-all max-h-32 overflow-y-auto">{{ debugResult.contentSnippet }}</pre>
             </div>
           </div>
         </div>
@@ -440,7 +483,7 @@ const getHostname = (url: string) => {
         <div class="bg-[var(--accent)]/5 border border-[var(--accent)]/10 p-5 rounded-xl flex items-start gap-4">
           <AlertCircle :size="18" class="text-[var(--accent)] shrink-0 mt-0.5" />
           <p class="text-xs text-[var(--text-muted)] leading-relaxed font-medium">
-            您的解析脚本将在隔离的沙箱中运行。请确保脚本返回包含 title, authors, abstract, url 和 publication_date 的对象数组。
+            您的解析脚本将在隔离的沙箱中运行。请确保脚本返回包含 title, url, content, summary, publish_date, author 的对象数组。
           </p>
         </div>
       </div>

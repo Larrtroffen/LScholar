@@ -83,7 +83,12 @@
 }
 
 .el-input__inner {
-  @apply !text-[var(--text-main)] placeholder:!text-[var(--text-muted)] !text-sm !important;
+  color: var(--text-main) !important;
+  font-size: 14px !important;
+}
+
+.el-input__inner::placeholder {
+  color: var(--text-muted) !important;
 }
 
 .el-button {
@@ -92,6 +97,45 @@
 
 .el-button--primary {
   @apply !bg-[var(--accent)] !border-none !text-white !shadow-sm hover:!opacity-90 !important;
+}
+
+/* Element Plus Select Styles */
+.el-select {
+  @apply !w-full !block !important;
+}
+
+.el-select .el-input__wrapper {
+  background-color: var(--bg-main) !important;
+  border-radius: 12px !important;
+  padding: 10px 16px !important;
+  transition: all 0.2s !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: none !important;
+}
+
+.el-select .el-input__wrapper:hover {
+  border-color: rgba(59, 130, 246, 0.5) !important;
+}
+
+.el-select .el-input.is-focus .el-input__wrapper {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1) !important;
+  background-color: var(--bg-card) !important;
+}
+
+.el-select .el-input__inner {
+  color: var(--text-main) !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  height: auto !important;
+}
+
+.el-select .el-input__inner::placeholder {
+  color: var(--text-muted) !important;
+}
+
+.el-select .el-input .el-select__caret {
+  @apply !text-[var(--text-muted)] !transition-transform !duration-200 !important;
 }
 
 .el-dialog {
@@ -181,7 +225,7 @@
 
 .custom-popper .el-select-dropdown__item.selected {
   @apply !text-[var(--accent)] !font-bold !important;
-  background-color: rgba(var(--accent-rgb, 59, 130, 246), 0.1) !important;
+  background-color: rgba(59, 130, 246, 0.1) !important;
 }
 
 .custom-popper .el-select-group__title {

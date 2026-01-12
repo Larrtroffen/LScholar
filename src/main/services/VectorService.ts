@@ -1,4 +1,5 @@
-import { getArticlesTable, db } from '../db';
+import { getArticlesTable, getLanceConnection, db } from '../db';
+import * as lancedb from '@lancedb/lancedb';
 import { eventBus } from '../events';
 import { articleService } from './ArticleService';
 import { configService } from './ConfigService';
@@ -135,24 +136,48 @@ export class VectorService {
     const text = `${article.title}\n\n${article.summary || ''}\n\n${article.content || ''}`.substring(0, 8000);
     const vector = await this.generateEmbedding(text);
 
-    const table = await getArticlesTable();
-    if (table) {
+    log.info(`Embedding article ${articleId}, vector length: ${vector.length}`);
+    
+    let table = await getArticlesTable();
+    
+    // Record data
+    const recordData = {
+      id: articleId,
+      vector: vector,
+      title: article.title,
+      url: article.url,
+      feed_id: article.feed_id,
+      publish_date: article.publish_date,
+      created_at: new Date().toISOString()
+    };
+    
+    // If table doesn't exist, create it
+    if (!table) {
+      log.info('Articles table does not exist, creating it...');
+      const conn = await getLanceConnection();
+      
+      try {
+        // Create table with first record using the correct API
+        table = await conn.createTable('articles', [recordData]);
+        log.info('Articles table created successfully');
+      } catch (error) {
+        log.error('Failed to create table:', error);
+        throw error;
+      }
+    } else {
+      // Delete existing record if any
       try {
         await table.delete(`id = ${articleId}`);
+        log.info(`Deleted existing record for article ${articleId}`);
       } catch (e) {
-        // Ignore
+        log.warn(`Failed to delete existing record for article ${articleId}:`, e);
       }
       
-      await table.add([{
-        id: articleId,
-        vector: vector,
-        title: article.title,
-        url: article.url,
-        feed_id: article.feed_id,
-        publish_date: article.publish_date,
-        created_at: new Date().toISOString()
-      }]);
+      // Add new record
+      await table.add([recordData]);
     }
+    
+    log.info(`Successfully added article ${articleId} to vector database`);
   }
 
   private async generateEmbedding(text: string): Promise<number[]> {
@@ -207,20 +232,48 @@ export class VectorService {
   }
 
   async search(query: string, limit = 10): Promise<any[]> {
-    const vector = await this.generateEmbedding(query);
-    const table = await getArticlesTable();
-    if (!table) return [];
-
-    const results = await (table as any).search(vector).limit(limit).execute();
-    return results;
+    log.info(`VectorService.search called with query: "${query}", limit: ${limit}`);
+    
+    try {
+      log.info('Generating embedding for query...');
+      const vector = await this.generateEmbedding(query);
+      log.info('Query embedding generated, vector length:', vector.length);
+      
+      const conn = await getLanceConnection();
+      const table = await conn.openTable('articles');
+      log.info('Table obtained successfully');
+      
+      // Use LanceDB API - search with array and toArray()
+      const results = await (table as any)
+        .search(vector)
+        .limit(limit)
+        .toArray();
+      
+      log.info('Search results count:', results.length);
+      if (results.length > 0) {
+        log.info('First result:', results[0]);
+      }
+      
+      return results;
+    } catch (error) {
+      log.error('Vector search failed:', error);
+      return [];
+    }
   }
 
   async reset(): Promise<void> {
     const table = await getArticlesTable();
     if (table) {
-      // await table.delete('id > 0'); 
+      try {
+        // LanceDB 删除所有数据
+        await table.delete('id > 0');
+        log.info('Vector table data deleted successfully');
+      } catch (error) {
+        log.warn('Failed to delete vectors (table may be empty):', error);
+      }
     }
     db.prepare("UPDATE articles SET embedding_status = 'none'").run();
+    log.info('All article embedding statuses reset to none');
   }
 
   async getStats(): Promise<any[]> {

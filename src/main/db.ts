@@ -182,7 +182,14 @@ function migrateDatabase() {
     console.log('Migrating rss_feeds: adding error_count');
     db.exec("ALTER TABLE rss_feeds ADD COLUMN error_count INTEGER DEFAULT 0");
   }
-  // Remove cron_schedule if exists (SQLite doesn't support DROP COLUMN directly easily, so we ignore it)
+  if (!feedColumns.includes('update_interval')) {
+    console.log('Migrating rss_feeds: adding update_interval');
+    db.exec("ALTER TABLE rss_feeds ADD COLUMN update_interval INTEGER DEFAULT 24");
+  }
+  if (!feedColumns.includes('cron_schedule')) {
+    console.log('Migrating rss_feeds: adding cron_schedule');
+    db.exec("ALTER TABLE rss_feeds ADD COLUMN cron_schedule TEXT DEFAULT '0 0 * * *'");
+  }
 
   // 4. articles 表迁移
   const tableInfoArticles = db.prepare("PRAGMA table_info(articles)").all() as any[];
@@ -206,7 +213,20 @@ function migrateDatabase() {
      db.exec("ALTER TABLE articles ADD COLUMN feed_id INTEGER REFERENCES rss_feeds(id)");
      db.exec("UPDATE articles SET feed_id = rss_feed_id");
   }
+
+  // 5. articles 表翻译字段迁移
+  if (!articleColumns.includes('trans_title')) {
+    console.log('Migrating articles: adding trans_title');
+    db.exec("ALTER TABLE articles ADD COLUMN trans_title TEXT");
+  }
+  if (!articleColumns.includes('trans_abstract')) {
+    console.log('Migrating articles: adding trans_abstract');
+    db.exec("ALTER TABLE articles ADD COLUMN trans_abstract TEXT");
+  }
 }
+
+// LanceDB connection caching
+let lanceConn: lancedb.Connection | null = null;
 
 export async function initLanceDB() {
   console.log('🔧 正在初始化 LanceDB 向量数据库...');
@@ -215,12 +235,23 @@ export async function initLanceDB() {
   return conn;
 }
 
+export async function getLanceConnection(): Promise<lancedb.Connection> {
+  if (!lanceConn) {
+    lanceConn = await lancedb.connect(lancePath);
+  }
+  return lanceConn;
+}
+
 export async function getArticlesTable() {
-  const conn = await initLanceDB();
+  console.log('[VectorService] getArticlesTable called');
   try {
-    return await conn.openTable('articles');
-  } catch {
-    // Table doesn't exist, will be created when first data is added
+    const conn = await getLanceConnection();
+    console.log('[VectorService] LanceDB connection obtained');
+    const table = await conn.openTable('articles');
+    console.log('[VectorService] Articles table opened successfully');
+    return table;
+  } catch (error) {
+    console.warn('[VectorService] Articles table does not exist or error:', error);
     return null;
   }
 }

@@ -5,6 +5,11 @@ import { llmService } from './LLMService';
 import { dialog } from 'electron';
 import fs from 'fs';
 
+// 检测是否包含中文字符
+function containsChinese(text: string): boolean {
+  return /[\u4e00-\u9fa5]/.test(text);
+}
+
 export class ArticleService {
   constructor() {
     this.init();
@@ -23,9 +28,10 @@ export class ArticleService {
     });
   }
 
-  create(article: Omit<Article, 'id' | 'created_at'>): Article {
+  create(article: Omit<Article, 'id' | 'created_at'>): Article | null {
+    // 使用 INSERT OR IGNORE 避免重复插入导致的唯一约束错误
     const stmt = db.prepare(`
-      INSERT INTO articles (feed_id, title, url, content, summary, publish_date, author, is_read, is_favorite, embedding_status)
+      INSERT OR IGNORE INTO articles (feed_id, title, url, content, summary, publish_date, author, is_read, is_favorite, embedding_status)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     
@@ -42,6 +48,11 @@ export class ArticleService {
       article.embedding_status
     );
 
+    // 如果 changes 为 0，说明是重复插入
+    if (info.changes === 0) {
+      return null;
+    }
+
     const newArticle = { ...article, id: Number(info.lastInsertRowid) };
     eventBus.emit('article:created', { id: newArticle.id, title: newArticle.title });
     return newArticle;
@@ -53,7 +64,13 @@ export class ArticleService {
     return this.mapRowToArticle(row);
   }
 
-  getAll(limit = 100, offset = 0): Article[] {
+  findByUrl(url: string): Article | undefined {
+    const row = db.prepare('SELECT * FROM articles WHERE url = ?').get(url) as any;
+    if (!row) return undefined;
+    return this.mapRowToArticle(row);
+  }
+
+  getAll(limit = 99999, offset = 0): Article[] {
     const rows = db.prepare('SELECT * FROM articles ORDER BY created_at DESC LIMIT ? OFFSET ?').all(limit, offset) as any[];
     return rows.map(this.mapRowToArticle);
   }
@@ -91,11 +108,21 @@ export class ArticleService {
     const article = this.getById(id);
     if (!article) throw new Error('Article not found');
 
-    // Check if already translated (if we store it in DB, which we should)
-    // The schema has trans_title and trans_abstract?
-    // Let's check db.ts. Yes, migration added them.
-    // But `Article` type in `types.ts` doesn't have them.
-    // I should update `types.ts` too.
+    const textToTranslate = article.title + ' ' + (article.summary || article.content || '');
+    
+    // 如果文本包含中文，直接返回原文，不翻译
+    if (containsChinese(textToTranslate)) {
+      const result = {
+        trans_title: article.title,
+        trans_abstract: article.summary || article.content || ''
+      };
+      
+      // Update DB
+      db.prepare('UPDATE articles SET trans_title = ?, trans_abstract = ? WHERE id = ?')
+        .run(result.trans_title, result.trans_abstract, id);
+      
+      return result;
+    }
     
     const prompt = `
       Translate the following title and abstract to Chinese (Simplified).
@@ -185,10 +212,9 @@ export class ArticleService {
       is_favorite: Boolean(row.is_favorite),
       embedding_status: row.embedding_status,
       created_at: row.created_at,
-      // Add translation fields if I update type
       trans_title: row.trans_title,
       trans_abstract: row.trans_abstract
-    } as any; // Cast to any to avoid type error for now until I update types.ts
+    };
   }
 }
 

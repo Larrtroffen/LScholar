@@ -4,25 +4,29 @@ import { ChevronDown, Check } from 'lucide-vue-next';
 
 interface Option {
   label: string;
-  value: any;
+  value: number;  // 强制为数字类型
   icon?: string;
   description?: string;
 }
 
 const props = defineProps<{
-  modelValue: any;
+  modelValue?: number | null;  // 可选，用于显示当前选中
   options: Option[];
   placeholder?: string;
   disabled?: boolean;
 }>();
 
-const emit = defineEmits(['update:modelValue', 'change']);
+const emit = defineEmits(['change']);
 
 const isOpen = ref(false);
 const selectRef = ref<HTMLElement | null>(null);
 
+// 计算当前选中的选项
 const selectedOption = computed(() => {
-  return props.options.find(opt => opt.value === props.modelValue);
+  if (props.modelValue === undefined || props.modelValue === null) {
+    return null;
+  }
+  return props.options.find(opt => opt.value === props.modelValue) || null;
 });
 
 const toggleDropdown = () => {
@@ -30,16 +34,18 @@ const toggleDropdown = () => {
   isOpen.value = !isOpen.value;
 };
 
+// 唯一的选择入口：点击选项时调用
 const selectOption = (option: Option) => {
-  console.log('[CustomSelect] selectOption called with:', option);
-  console.log('[CustomSelect] Emitting update:modelValue with:', option.value);
-  // 使用 nextTick 确保 DOM 更新后再关闭下拉菜单
-  emit('update:modelValue', option.value);
-  emit('change', option.value);
-  console.log('[CustomSelect] Events emitted, closing dropdown...');
+  console.log('[CustomSelect] selectOption:', option.value);
+  
+  // 只有有效数字才触发 change 事件
+  if (typeof option.value === 'number' && !isNaN(option.value)) {
+    emit('change', option.value);
+  }
+  
+  // 关闭下拉菜单
   setTimeout(() => {
     isOpen.value = false;
-    console.log('[CustomSelect] Dropdown closed');
   }, 0);
 };
 

@@ -65,6 +65,8 @@ export interface Article {
   is_favorite: boolean;
   embedding_status: 'none' | 'pending' | 'completed' | 'failed';
   created_at?: string;
+  trans_title?: string;
+  trans_abstract?: string;
 }
 
 // IPC 接口定义

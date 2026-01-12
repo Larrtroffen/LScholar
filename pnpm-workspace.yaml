@@ -4,4 +4,6 @@ onlyBuiltDependencies:
   - electron
   - esbuild
   - lzma-native
+  - protobufjs
+  - sharp
   - vue-demi

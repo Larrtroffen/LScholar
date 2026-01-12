@@ -29,7 +29,8 @@ export const useTaskStore = defineStore('task', {
         this.updateProgress = { current: 0, total: 0, message: 'Starting update...' };
       });
 
-      ipc.on('source:update-progress', (_: any, progress: any) => {
+      // preload 的 on 方法直接传递 payload，不传递 event 对象
+      ipc.on('source:update-progress', (progress: any) => {
         this.updateProgress = { ...this.updateProgress, ...progress };
       });
 
@@ -38,7 +39,7 @@ export const useTaskStore = defineStore('task', {
         this.updateProgress = { current: 0, total: 0, message: 'Update complete' };
       });
 
-      ipc.on('embedding:queued', (_: any, { articleId }: any) => {
+      ipc.on('embedding:queued', ({ articleId }: { articleId: number }) => {
         if (!this.embeddingQueue.includes(articleId)) {
           this.embeddingQueue.push(articleId);
           this.embeddingStatus[articleId] = 'pending';
@@ -46,14 +47,14 @@ export const useTaskStore = defineStore('task', {
         }
       });
 
-      ipc.on('embedding:success', (_: any, { articleId }: any) => {
+      ipc.on('embedding:success', ({ articleId }: { articleId: number }) => {
         this.embeddingQueue = this.embeddingQueue.filter(id => id !== articleId);
         this.embeddingStatus[articleId] = 'completed';
         this.queueStatus.queueLength = Math.max(0, this.queueStatus.queueLength - 1);
         this.fetchStats(false);
       });
 
-      ipc.on('embedding:error', (_: any, { articleId }: any) => {
+      ipc.on('embedding:error', ({ articleId }: { articleId: number }) => {
         this.embeddingQueue = this.embeddingQueue.filter(id => id !== articleId);
         this.embeddingStatus[articleId] = 'failed';
         this.queueStatus.queueLength = Math.max(0, this.queueStatus.queueLength - 1);

@@ -28,7 +28,18 @@ const dateRange = ref<[Date, Date]>([
 ]);
 const loading = ref(false);
 const extractionData = ref<any>(null);
-const recommendationCount = ref(15);
+// 从偏好设置读取推荐数量
+const getInitialRecommendationCount = () => {
+  try {
+    if (configStore.settings.user_preferences) {
+      const prefs = JSON.parse(configStore.settings.user_preferences);
+      return prefs.topic_insight_preferences?.recommendation_count || 
+             prefs.recommendation_count || 15;
+    }
+  } catch {}
+  return 15;
+};
+const recommendationCount = ref(getInitialRecommendationCount());
 const selectedSources = ref<string[]>([]); // 格式: 'group:id' 或 'feed:id'
 const currentInsightId = ref<number | null>(null);
 
@@ -57,13 +68,31 @@ const generateExtraction = async () => {
     const startDate = dateRange.value[0].toISOString().split('T')[0];
     const endDate = dateRange.value[1].toISOString().split('T')[0];
     
-    const result = await (window as any).electron.ipcRenderer.invoke('generate-smart-extraction', JSON.parse(JSON.stringify({
+    // 从用户偏好中正确提取 interests 数组
+    let interests: string[] = [];
+    try {
+      if (configStore.settings.user_preferences) {
+        const prefs = JSON.parse(configStore.settings.user_preferences);
+        interests = prefs.topic_insight_preferences?.interests || prefs.interests || [];
+      }
+    } catch (e) {
+      console.warn('[SmartExtraction] Failed to parse interests from preferences:', e);
+    }
+    
+    // 构建参数对象，确保所有值都是可序列化的基本类型
+    const params = {
       startDate,
       endDate,
-      interests: configStore.settings.user_preferences,
-      count: recommendationCount.value,
-      sources: selectedSources.value
-    })));
+      interests: Array.isArray(interests) ? interests : [],
+      count: Number(recommendationCount.value) || 15,
+      sources: Array.isArray(selectedSources.value) ? [...selectedSources.value] : []
+    };
+    
+    // 通过 JSON 序列化确保参数可以正确传递
+    const result = await (window as any).electron.ipcRenderer.invoke(
+      'generate-smart-extraction', 
+      JSON.parse(JSON.stringify(params))
+    );
 
     if (result.success) {
       extractionData.value = result.data;
@@ -208,7 +237,12 @@ onMounted(async () => {
 
         <!-- Configuration Section (Only show when no data or creating new) -->
         <template v-if="!extractionData || loading">
-          <ResearchPreferences :initial-show="true" :show-save-button="false">
+          <ResearchPreferences 
+            :initial-show="true" 
+            :show-save-button="false"
+            preference-type="topic"
+            label="专题洞察偏好与配置"
+          >
             <template #extra-settings>
               <label class="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest ml-1">核心文献数量 (5 - 50)</label>
               <div class="flex items-center gap-6 bg-[var(--bg-card)] p-4 rounded-xl border border-[var(--border)]">
@@ -307,7 +341,7 @@ onMounted(async () => {
               <div class="space-y-4">
                 <div 
                   v-for="(item, index) in extractionData.recommendations" 
-                  :key="index"
+                  :key="item.id || index"
                   @click="store.jumpToArticle(item)"
                   class="bg-[var(--bg-card)] p-6 rounded-2xl border border-[var(--border)] hover:border-[var(--accent)]/50 transition-all flex justify-between items-center group cursor-pointer shadow-sm"
                 >
@@ -316,13 +350,12 @@ onMounted(async () => {
                       <span 
                         class="px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-widest bg-purple-500/10 text-purple-500"
                       >
-                        {{ item.type }}
+                        推荐
                       </span>
-                      <span class="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest">{{ item.journal }}</span>
+                      <span v-if="item.author" class="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest">{{ item.author }}</span>
                       <span v-if="item.date" class="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest flex items-center gap-1">
                         <Clock :size="10" /> {{ item.date }}
                       </span>
-                      <span class="text-[10px] font-bold text-[var(--accent)] uppercase tracking-widest">匹配度 {{ (item.score * 100).toFixed(0) }}%</span>
                     </div>
                     <h3 class="text-base font-bold text-[var(--text-main)] group-hover:text-[var(--accent)] transition-colors leading-snug mb-2">{{ item.title }}</h3>
                     <p v-if="item.abstract" class="text-xs text-[var(--text-muted)] line-clamp-2 leading-relaxed italic opacity-80">

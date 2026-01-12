@@ -14,7 +14,17 @@ export function setupIpc() {
   ipcMain.handle('config:get-settings', () => configService.getSettings());
   ipcMain.handle('config:update-settings', (_, settings) => configService.updateSettings(settings));
   ipcMain.handle('config:get-assignments', () => configService.getAllAssignments());
-  ipcMain.handle('config:set-assignment', (_, type, modelId) => configService.setAssignment(type, modelId));
+  ipcMain.handle('config:set-assignment', (_, type, modelId) => {
+    console.log('[IPC] config:set-assignment called:', { type, modelId });
+    try {
+      const result = configService.setAssignment(type, modelId);
+      console.log('[IPC] config:set-assignment success');
+      return result;
+    } catch (error: any) {
+      console.error('[IPC] config:set-assignment error:', error);
+      throw error;
+    }
+  });
 
   // Models
   ipcMain.handle('model:get-all', () => modelService.getAll());
@@ -38,10 +48,12 @@ export function setupIpc() {
   });
   ipcMain.handle('source:generate-script', (_, url) => sourceService.generateScript(url));
   ipcMain.handle('fetch-raw-rss', (_, url) => sourceService.fetchRawRss(url));
+  ipcMain.handle('debug-rss', (_, { url, script }) => sourceService.debugScript(url, script));
 
   // Articles
   ipcMain.handle('article:get-all', (_, limit, offset) => articleService.getAll(limit, offset));
   ipcMain.handle('article:search', (_, query) => articleService.search(query));
+  ipcMain.handle('article:find-by-url', (_, url) => articleService.findByUrl(url));
   ipcMain.handle('article:mark-read', (_, id, isRead) => articleService.markRead(id, isRead));
   ipcMain.handle('article:toggle-favorite', (_, id) => articleService.toggleFavorite(id));
   ipcMain.handle('article:translate', (_, id) => articleService.translateArticle(id));
@@ -61,6 +73,7 @@ export function setupIpc() {
   ipcMain.handle('delete-topic-insight', (_, id) => insightService.deleteTopicInsight(id));
   ipcMain.handle('rename-topic-insight', (_, { id, title }) => insightService.renameTopicInsight(id, title));
   ipcMain.handle('get-insights', (_, date) => insightService.getDailyInsight(date));
+  ipcMain.handle('rerun-insights', (_, { count }) => insightService.rerunDailyInsight(count));
 
   // LLM Chat
   ipcMain.handle('llm:chat', (_, type, messages, options) => llmService.chat(type, messages, options));
@@ -89,9 +102,9 @@ export function setupIpc() {
 
   eventsToForward.forEach(eventName => {
     eventBus.on(eventName as any, (payload) => {
-      // Broadcast to all windows
+      // Broadcast to all windows, ensure payload is always defined
       BrowserWindow.getAllWindows().forEach(win => {
-        win.webContents.send(eventName, payload);
+        win.webContents.send(eventName, payload ?? {});
       });
     });
   });

@@ -21,7 +21,18 @@ const selectedDate = ref(new Date());
 const loading = ref(false);
 const rerunning = ref(false);
 const insightData = ref<any>(null);
-const recommendationCount = ref(10);
+// 从偏好设置读取推荐数量
+const getInitialRecommendationCount = () => {
+  try {
+    if (configStore.settings.user_preferences) {
+      const prefs = JSON.parse(configStore.settings.user_preferences);
+      return prefs.daily_insight_preferences?.recommendation_count || 
+             prefs.recommendation_count || 10;
+    }
+  } catch {}
+  return 10;
+};
+const recommendationCount = ref(getInitialRecommendationCount());
 
 // 监听日期变化
 watch(selectedDate, () => {
@@ -92,7 +103,11 @@ onMounted(async () => {
       </header>
 
       <!-- Research Preferences Section -->
-      <ResearchPreferences :show-save-button="true">
+      <ResearchPreferences 
+        :show-save-button="true" 
+        preference-type="daily"
+        label="每日洞察偏好与配置"
+      >
         <template #extra-settings>
           <label class="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest ml-1">推荐文章数量 (10 - 50)</label>
           <div class="flex items-center gap-6 bg-[var(--bg-card)] p-4 rounded-xl border border-[var(--border)]">
@@ -162,20 +177,19 @@ onMounted(async () => {
               <div class="space-y-4">
                 <div 
                   v-for="(item, index) in insightData.recommendations" 
-                  :key="index"
+                  :key="item.id || index"
                   @click="store.jumpToArticle(item)"
                   class="bg-[var(--bg-card)] p-6 rounded-2xl border border-[var(--border)] hover:border-[var(--accent)]/50 transition-all flex justify-between items-center group cursor-pointer shadow-sm"
                 >
                   <div class="flex-1 pr-8">
                     <div class="flex items-center gap-3 mb-2">
                       <span 
-                        class="px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-widest"
-                        :class="item.type === '强相关' ? 'bg-red-500/10 text-red-500' : 'bg-green-500/10 text-green-500'"
+                        class="px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-widest bg-blue-500/10 text-blue-500"
                       >
-                        {{ item.type }}
+                        推荐
                       </span>
-                      <span class="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest">{{ item.journal }}</span>
-                      <span class="text-[10px] font-bold text-[var(--accent)] uppercase tracking-widest">匹配度 {{ (item.score * 100).toFixed(0) }}%</span>
+                      <span v-if="item.author" class="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest">{{ item.author }}</span>
+                      <span v-if="item.date" class="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest">{{ new Date(item.date).toLocaleDateString() }}</span>
                     </div>
                     <h3 class="text-base font-bold text-[var(--text-main)] group-hover:text-[var(--accent)] transition-colors leading-snug mb-2">{{ item.title }}</h3>
                     <p v-if="item.abstract" class="text-xs text-[var(--text-muted)] line-clamp-2 leading-relaxed italic opacity-80">

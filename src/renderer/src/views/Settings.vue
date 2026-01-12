@@ -3,7 +3,6 @@ import { ref, onMounted, watch, computed } from 'vue';
 import { useConfigStore } from '../store/config';
 import { ElMessage } from 'element-plus';
 import ModelManager from './ModelManager.vue';
-import CustomSelect from '../components/CustomSelect.vue';
 import { 
   CheckCircle2, 
   Zap,
@@ -27,58 +26,82 @@ const form = ref({
   translation_mode: 'append'
 });
 
-// 模型分配 - 使用 computed 属性直接绑定到 store
-const mainChatModel = computed({
-  get: () => {
-    const assignment = configStore.assignments.find(a => a.function_type === 'main_chat');
-    console.log('[Settings] Getting main_chat model:', assignment?.model_id ?? null);
-    return assignment?.model_id ?? null;
-  },
-  set: async (value: number | null) => {
-    console.log('[Settings] Setting main_chat model to:', value);
-    await configStore.setAssignment('main_chat', value);
-    console.log('[Settings] main_chat model set completed, current assignments:', configStore.assignments);
-  }
-});
+// 计算当前选中的模型ID（使用 ref + watch 模式来正确同步）
+const mainChatModelId = ref<number | null>(null);
+const embeddingModelId = ref<number | null>(null);
+const translationModelId = ref<number | null>(null);
 
-const embeddingModel = computed({
-  get: () => {
-    const assignment = configStore.assignments.find(a => a.function_type === 'embedding');
-    console.log('[Settings] Getting embedding model:', assignment?.model_id ?? null);
-    return assignment?.model_id ?? null;
+// 监听 store 变化，同步到本地 ref
+watch(
+  () => configStore.assignments,
+  (assignments) => {
+    const mainChat = assignments.find(a => a.function_type === 'main_chat');
+    const embedding = assignments.find(a => a.function_type === 'embedding');
+    const translation = assignments.find(a => a.function_type === 'translation');
+    mainChatModelId.value = mainChat?.model_id ?? null;
+    embeddingModelId.value = embedding?.model_id ?? null;
+    translationModelId.value = translation?.model_id ?? null;
   },
-  set: async (value: number | null) => {
-    console.log('[Settings] Setting embedding model to:', value);
-    await configStore.setAssignment('embedding', value);
-    console.log('[Settings] embedding model set completed, current assignments:', configStore.assignments);
-  }
-});
-
-const translationModel = computed({
-  get: () => {
-    const assignment = configStore.assignments.find(a => a.function_type === 'translation');
-    console.log('[Settings] Getting translation model:', assignment?.model_id ?? null);
-    return assignment?.model_id ?? null;
-  },
-  set: async (value: number | null) => {
-    console.log('[Settings] Setting translation model to:', value);
-    await configStore.setAssignment('translation', value);
-    console.log('[Settings] translation model set completed, current assignments:', configStore.assignments);
-  }
-});
+  { immediate: true, deep: true }
+);
 
 // 模型选项
-const llmModels = computed(() => configStore.models.filter(m => m.type === 'llm').map(m => ({
-  label: m.name,
-  value: m.id,
-  description: m.model_name
-})));
+const llmModels = computed(() => 
+  configStore.models
+    .filter(m => m.type === 'llm')
+    .map(m => ({
+      label: m.name,
+      value: m.id!,
+      description: m.model_name
+    }))
+);
 
-const embeddingModels = computed(() => configStore.models.filter(m => m.type === 'embedding').map(m => ({
-  label: m.name,
-  value: m.id,
-  description: m.model_name
-})));
+const embeddingModels = computed(() => 
+  configStore.models
+    .filter(m => m.type === 'embedding')
+    .map(m => ({
+      label: m.name,
+      value: m.id!,
+      description: m.model_name
+    }))
+);
+
+// 选择模型时的处理函数
+const handleMainChatChange = async (value: number) => {
+  console.log('[Settings] Main chat model changed to:', value);
+  try {
+    await configStore.setAssignment('main_chat', value);
+    console.log('[Settings] Main chat assignment saved successfully');
+    lastSaved.value = Date.now();
+  } catch (error) {
+    console.error('[Settings] Failed to save main chat assignment:', error);
+    ElMessage.error('保存失败，请重试');
+  }
+};
+
+const handleEmbeddingChange = async (value: number) => {
+  console.log('[Settings] Embedding model changed to:', value);
+  try {
+    await configStore.setAssignment('embedding', value);
+    console.log('[Settings] Embedding assignment saved successfully');
+    lastSaved.value = Date.now();
+  } catch (error) {
+    console.error('[Settings] Failed to save embedding assignment:', error);
+    ElMessage.error('保存失败，请重试');
+  }
+};
+
+const handleTranslationChange = async (value: number) => {
+  console.log('[Settings] Translation model changed to:', value);
+  try {
+    await configStore.setAssignment('translation', value);
+    console.log('[Settings] Translation assignment saved successfully');
+    lastSaved.value = Date.now();
+  } catch (error) {
+    console.error('[Settings] Failed to save translation assignment:', error);
+    ElMessage.error('保存失败，请重试');
+  }
+};
 
 // 检查本地模型是否已下载（已注册）
 const isModelDownloaded = (modelName: string) => {
@@ -123,10 +146,6 @@ const downloadLocalModel = async (modelName: string) => {
 
   modelDownloadProgress.value = { model: modelName, percent: 0 };
   try {
-    // Placeholder for download logic
-    // const result = await (window as any).electron.ipcRenderer.invoke('model:download', modelName);
-    // if (!result.success) throw new Error(result.error);
-    
     // Simulate download
     await new Promise(resolve => setTimeout(resolve, 1000));
     
@@ -142,11 +161,8 @@ const downloadLocalModel = async (modelName: string) => {
 
     ElMessage.success('模型下载完成并已自动注册');
     
-    // 如果当前没有选中的嵌入模型，自动选中刚下载的这个
-    const newModel = configStore.models.find(m => m.model_name === modelName);
-    if (!embeddingModel.value && newModel) {
-      embeddingModel.value = newModel.id!;
-    }
+    // 刷新模型列表
+    await configStore.fetchModels();
   } catch (error: any) {
     ElMessage.error(`模型下载失败: ${error.message}`);
   } finally {
@@ -201,8 +217,9 @@ watch(form, (newVal) => {
   }, 1000);
 }, { deep: true });
 
-// 组件挂载时检查模型状态
+// 组件挂载时初始化
 onMounted(async () => {
+  console.log('[Settings] Component mounted');
   await configStore.fetchSettings();
   await configStore.fetchModels();
   await configStore.fetchAssignments();
@@ -250,15 +267,66 @@ onMounted(async () => {
           <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div class="space-y-2">
               <label class="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest ml-1">通用对话/洞察</label>
-              <CustomSelect v-model="mainChatModel" :options="llmModels" placeholder="选择模型" />
+              <el-select
+                v-model="mainChatModelId"
+                placeholder="选择模型"
+                @change="handleMainChatChange"
+                popper-class="custom-popper"
+                clearable
+                class="w-full"
+              >
+                <el-option
+                  v-for="model in llmModels"
+                  :key="model.value"
+                  :label="model.label"
+                  :value="model.value"
+                >
+                  <span>{{ model.label }}</span>
+                  <span class="text-[10px] text-[var(--text-muted)] ml-2">{{ model.description }}</span>
+                </el-option>
+              </el-select>
             </div>
             <div class="space-y-2">
               <label class="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest ml-1">文献翻译</label>
-              <CustomSelect v-model="translationModel" :options="llmModels" placeholder="选择模型" />
+              <el-select
+                v-model="translationModelId"
+                placeholder="选择模型"
+                @change="handleTranslationChange"
+                popper-class="custom-popper"
+                clearable
+                class="w-full"
+              >
+                <el-option
+                  v-for="model in llmModels"
+                  :key="model.value"
+                  :label="model.label"
+                  :value="model.value"
+                >
+                  <span>{{ model.label }}</span>
+                  <span class="text-[10px] text-[var(--text-muted)] ml-2">{{ model.description }}</span>
+                </el-option>
+              </el-select>
             </div>
             <div class="space-y-2">
               <label class="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest ml-1">向量嵌入 (全局)</label>
-              <CustomSelect v-model="embeddingModel" :options="embeddingModels" placeholder="选择模型" />
+              <el-select
+                v-model="embeddingModelId"
+                placeholder="选择模型"
+                @change="handleEmbeddingChange"
+                popper-class="custom-popper"
+                clearable
+                class="w-full"
+              >
+                <el-option
+                  v-for="model in embeddingModels"
+                  :key="model.value"
+                  :label="model.label"
+                  :value="model.value"
+                >
+                  <span>{{ model.label }}</span>
+                  <span class="text-[10px] text-[var(--text-muted)] ml-2">{{ model.description }}</span>
+                </el-option>
+              </el-select>
               <p class="text-[10px] text-[var(--text-muted)]">
                 注意：切换嵌入模型会导致现有的向量数据失效，建议切换后在嵌入管理页面重置向量库。
               </p>
@@ -429,14 +497,6 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.el-input :deep(.el-input__wrapper) {
-  background-color: rgba(0, 0, 0, 0.05) !important;
-}
-
-.dark .el-input :deep(.el-input__wrapper) {
-  background-color: rgba(0, 0, 0, 0.2) !important;
-}
-
 .custom-radio-group :deep(.el-radio-button__inner) {
   background-color: var(--bg-main) !important;
   border-color: var(--border) !important;
@@ -457,3 +517,4 @@ onMounted(async () => {
   background-color: rgba(255, 255, 255, 0.05) !important;
 }
 </style>
+

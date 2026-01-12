@@ -37,7 +37,7 @@ const filteredFavorites = computed(() => {
   const q = searchQuery.value.toLowerCase();
   return favorites.value.filter(a => 
     a.title?.toLowerCase().includes(q) || 
-    a.authors?.toLowerCase().includes(q)
+    a.author?.toLowerCase().includes(q)
   );
 });
 
@@ -178,17 +178,14 @@ const openExternal = (url: string) => {
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-3 mb-2">
               <span class="text-[10px] font-bold text-[var(--text-muted)] flex items-center gap-1.5 uppercase tracking-widest">
-                <CalendarIcon :size="12" /> {{ article.publication_date }}
-              </span>
-              <span class="text-[10px] font-bold text-[var(--text-muted)] flex items-center gap-1.5 uppercase tracking-widest truncate max-w-[200px]">
-                <Hash :size="12" /> {{ getJournalName(article.journal_info) }}
+                <CalendarIcon :size="12" /> {{ article.publish_date }}
               </span>
             </div>
             <h3 class="text-base font-bold text-[var(--text-main)] mb-1 group-hover:text-[var(--accent)] transition-colors tracking-tight line-clamp-2">
               {{ article.title }}
             </h3>
-            <p class="text-xs text-[var(--text-muted)] font-medium mb-2">{{ formatAuthors(article.authors) }}</p>
-            <p class="text-xs text-[var(--text-muted)] line-clamp-2 italic opacity-80">{{ article.abstract }}</p>
+            <p class="text-xs text-[var(--text-muted)] font-medium mb-2">{{ article.author || '未知作者' }}</p>
+            <p class="text-xs text-[var(--text-muted)] line-clamp-2 italic opacity-80">{{ article.summary }}</p>
           </div>
 
           <div class="flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-all translate-x-4 group-hover:translate-x-0">

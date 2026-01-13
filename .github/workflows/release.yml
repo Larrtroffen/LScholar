@@ -147,6 +147,15 @@ jobs:
       - name: List extracted files
         run: ls -la release/
 
+      - name: Move installers to root
+        run: |
+          find release/ -maxdepth 2 -name "*.dmg" -exec mv {} release/ \; || true
+          find release/ -maxdepth 2 -name "*.exe" -exec mv {} release/ \; || true
+          find release/ -maxdepth 2 -name "*.AppImage" -exec mv {} release/ \; || true
+          find release/ -maxdepth 2 -name "*.deb" -exec mv {} release/ \; || true
+          # 清理空目录
+          find release/ -type d -empty -delete
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:

@@ -131,7 +131,11 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: release/**/*
+          files: |
+            release/*.dmg
+            release/*.exe
+            release/*.AppImage
+            release/*.deb
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

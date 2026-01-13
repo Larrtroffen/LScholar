@@ -128,14 +128,24 @@ jobs:
           name: win-release
           path: release/
 
-      - name: Extract Linux installer
-        run: cd release && unzip -o linux-release.zip && mv linux/* . && rm -rf linux linux-release.zip
+      - name: List release files
+        run: ls -la release/
 
-      - name: Extract macOS installer
-        run: cd release && unzip -o mac-release.zip && mv mac/* . && rm -rf mac mac-release.zip
+      - name: Extract installers
+        run: |
+          # 解压所有 zip 文件
+          for zip in release/*.zip; do
+            if [ -f "$zip" ]; then
+              echo "Extracting: $zip"
+              unzip -o "$zip" -d release-extract
+              mv release-extract/* release/ 2>/dev/null || true
+              rm -rf release-extract
+              rm "$zip"
+            fi
+          done
 
-      - name: Extract Windows installer
-        run: cd release && unzip -o win-release.zip && mv win/* . && rm -rf win win-release.zip
+      - name: List extracted files
+        run: ls -la release/
 
       - name: Create Release
         uses: softprops/action-gh-release@v2

@@ -38,16 +38,16 @@ const defaultScript = `// 解析脚本：输入变量为 content (RSS/XML 字符
 
 // 使用正则表达式解析 XML (Node.js 环境无 DOMParser)
 const items = [];
-const itemRegex = /<item[^>]*>([\\s\\S]*?)<\\/item>|<entry[^>]*>([\\s\\S]*?)<\\/entry>/gi;
+const itemRegex = /<item[^>]*>([\s\S]*?)<\/item>|<entry[^>]*>([\s\S]*?)<\/entry>/gi;
 let match;
 
 while ((match = itemRegex.exec(content)) !== null) {
   const itemContent = match[1] || match[2];
   
   const getTagContent = (tag) => {
-    const regex = new RegExp('<' + tag + '[^>]*>([\\\\s\\\\S]*?)<\\\\/' + tag + '>', 'i');
+    const regex = new RegExp('<' + tag + '[^>]*>([\\s\\S]*?)<\\/' + tag + '>', 'i');
     const m = itemContent.match(regex);
-    return m ? m[1].replace(/<!\\\\[CDATA\\\\[|\\\\]\\\\]>/g, '').trim() : '';
+    return m ? m[1].replace(/<!\[CDATA\[|\]\]>/g, '').trim() : '';
   };
   
   const getLinkHref = () => {
@@ -177,9 +177,27 @@ const generateScript = async () => {
   generatingScript.value = true;
   try {
     const script = await (window as any).electron.ipcRenderer.invoke('source:generate-script', newFeed.value.url);
-    const codeMatch = script.match(/```javascript([\s\S]*?)```/) || script.match(/```js([\s\S]*?)```/);
-    newFeed.value.parsing_script = codeMatch ? codeMatch[1].trim() : script;
-    ElMessage.success('脚本已根据 RSS 格式智能生成');
+    
+    // 尝试提取代码块
+    const codeMatch = script.match(/```javascript([\s\S]*?)```/) || 
+                      script.match(/```js([\s\S]*?)```/) ||
+                      script.match(/```([\s\S]*?)```/);
+    
+    let extractedScript = codeMatch ? codeMatch[1].trim() : script;
+    
+    // 验证代码完整性：检查是否包含 return 语句和基本结构
+    const hasReturn = extractedScript.includes('return');
+    const hasFunction = extractedScript.includes('function') || extractedScript.includes('=>');
+    const hasItemsArray = extractedScript.includes('items') || extractedScript.includes('articles');
+    
+    // 如果代码不完整，尝试使用默认脚本并警告用户
+    if (!hasReturn || (!hasFunction && !hasItemsArray)) {
+      ElMessage.warning('AI 生成的脚本不完整，已保留默认脚本，请手动修改');
+      console.warn('Generated script incomplete:', extractedScript);
+    } else {
+      newFeed.value.parsing_script = extractedScript;
+      ElMessage.success('脚本已根据 RSS 格式智能生成');
+    }
   } catch (error: any) {
     ElMessage.error(`生成失败: ${error.message}`);
   } finally {

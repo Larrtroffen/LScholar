@@ -14,21 +14,18 @@ export interface ChatOptions {
   stream?: boolean;
 }
 
-// 过滤思考链块
+// 过滤思考链块 - 只移除标签，不触碰代码内容
 function cleanThinkingBlocks(text: string): string {
-  // 移除 <think>...</think> 或 <thinking>...</thinking>
-  text = text.replace(/<think>[\s\S]*?<\/think>/gi, '');
-  text = text.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '');
+  // 移除 XML 格式的思考标签
+  text = text.replace(/<think[^>]*>[\s\S]*?<\/think>/gi, '');
+  text = text.replace(/<thinking[^>]*>[\s\S]*?<\/thinking>/gi, '');
+  text = text.replace(/<thought[^>]*>[\s\S]*?<\/thought>/gi, '');
   
-  // 移除 ([...]) 格式的思考内容
-  text = text.replace(/\([^[]*\([^)]*\)[^)]*\)/g, '');
+  // 移除 Markdown 格式的思考标签
+  text = text.replace(/<thought_block>[\s\S]*?<\/thought_block>/gi, '');
   
-  // 移除以 Thinking: 或 分析: 开头的行
-  text = text.replace(/^(Thinking|分析|思考)[:：].*$/gm, '');
-  
-  // 移除单独的 think/thinking 标签
-  text = text.replace(/<think>[\s\S]*?<\/think>/gi, '');
-  text = text.replace(/<thought>[\s\S]*?<\/thought>/gi, '');
+  // 移除以特定前缀开头的行（这些是常见的思考/分析前缀）
+  text = text.replace(/^[\s]*[📝💡🔍🤔分析思考]?\s*(Thinking|Analysis|思考|分析)[:：\s].*$/gmi, '');
   
   return text.trim();
 }

@@ -94,6 +94,7 @@ export function setupIpc() {
     'feed:fetch-error',
     'article:created',
     'article:updated',
+    'article:discovered',
     'embedding:queued',
     'embedding:success',
     'embedding:error',
